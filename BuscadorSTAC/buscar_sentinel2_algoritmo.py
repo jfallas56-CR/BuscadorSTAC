@@ -1392,10 +1392,21 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             'una no sirven en la otra.'))
         self.addParameter(p)
 
-        self.addParameter(QgsProcessingParameterNumber(
+        p = QgsProcessingParameterNumber(
             self.MAX_ESCENAS, self.tr('Número máximo de escenas'),
             QgsProcessingParameterNumber.Integer,
-            defaultValue=20, minValue=1, maxValue=500))
+            defaultValue=20, minValue=1, maxValue=500)
+        p.setHelp(self.tr(
+            'Tope de escenas que devuelve la consulta STAC, aplicado '
+            'ANTES de medir la nubosidad dentro del AOI. Con un tope bajo '
+            'y nubosidad de escena permisiva puede quedarse sin '
+            'candidatas despejadas: el catálogo devuelve las primeras N '
+            'por el orden pedido, y si ésas resultan nubladas sobre su '
+            'área no hay más de dónde elegir.<br>'
+            'Si el aviso de «periodos sin datos» aparece para años que sí '
+            'tienen escenas, suba este número antes de ampliar el '
+            'periodo.'))
+        self.addParameter(p)
 
         p = QgsProcessingParameterNumber(
             self.CANDIDATOS, self.tr('Candidatos a evaluar por periodo'),
@@ -1421,9 +1432,25 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             'dentro de uno o dos años.'))
         self.addParameter(p)
 
-        self.addParameter(QgsProcessingParameterEnum(
+        p = QgsProcessingParameterEnum(
             self.MODO, self.tr('Modo de ejecución'),
-            options=MODOS, defaultValue=0))
+            options=MODOS, defaultValue=0)
+        p.setHelp(self.tr(
+            '<b>Solo catálogo</b>: consulta, mide la nube dentro del AOI y '
+            'devuelve las huellas y la hoja de contactos. No transfiere '
+            'píxeles, así que es el modo para explorar disponibilidad y el '
+            'primer paso del flujo de dos pasos.<br>'
+            '<b>Cargar assets remotos</b>: añade las bandas como capas '
+            'leídas por HTTP con /vsicurl/. No ocupa disco y QGIS descarga '
+            'solo los bloques que mira. Con Planetary Computer, la URL '
+            'firmada caduca en unos 45 minutos y las capas dejan de cargar '
+            'después.<br>'
+            '<b>Descargar recorte</b>: escribe un GeoTIFF comprimido por '
+            'banda y escena, recortado al AOI. Es el único modo en que '
+            'tienen efecto los índices, la amplitud fenológica y el '
+            'escalado a 8 bits, porque son lo que necesita los píxeles en '
+            'disco.'))
+        self.addParameter(p)
 
         p = QgsProcessingParameterEnum(
             self.COMPOSICION, self.tr('Composiciones RGB (puede elegir varias)'),

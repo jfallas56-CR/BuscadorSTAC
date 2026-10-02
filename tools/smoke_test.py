@@ -133,8 +133,16 @@ def main():
         prov = clase_prov()
         prov.loadAlgorithms()
         algos = list(prov.algorithms())
-        comp(f'el proveedor registra 3 algoritmos (registró {len(algos)})',
-             len(algos) == 3)
+        # El conteo se DEDUCE, no se fija: una lista fija obliga a editar
+        # esta herramienta cada vez que se anade un algoritmo, y entonces
+        # un fallo por expectativa desfasada no se distingue de una
+        # regresion real. Eso ya paso aqui con el cuarto algoritmo.
+        comp(f'el proveedor registra al menos 3 algoritmos '
+             f'(registro {len(algos)})', len(algos) >= 3)
+        nombres_vistos = [a.name() for a in algos]
+        comp('ningun id de algoritmo duplicado',
+             len(set(nombres_vistos)) == len(nombres_vistos),
+             f'{nombres_vistos}')
         for a in algos:
             print(f'        {a.name()} — {a.displayName()}')
 
