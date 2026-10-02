@@ -5,3 +5,11 @@
 pytest>=7.0
 flake8>=6.0
 bandit>=1.7
+
+# numpy NO es una dependencia del complemento: QGIS ya lo trae, y por eso
+# el usuario no instala nada. Pero el trabajo de pruebas corre sobre un
+# Python limpio SIN QGIS -- que es justamente lo que permite probar
+# core.py con pytest a secas -- y ahi numpy no esta. Lo descubrio CI en
+# una maquina limpia; en la de desarrollo estaba instalado y el hueco era
+# invisible.
+numpy>=1.21

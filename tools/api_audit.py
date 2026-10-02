@@ -150,10 +150,21 @@ def auditar(importaciones, atributos):
             continue
         for nombre in sorted(nombres):
             revisados += 1
-            if not hasattr(mod, nombre):
+            if hasattr(mod, nombre):
+                objetos[nombre] = getattr(mod, nombre)
+                continue
+            # Un SUBMODULO no es atributo de su paquete hasta que alguien
+            # lo importa: «import osgeo» deja hasattr(osgeo, 'gdal') en
+            # False, y «from osgeo import gdal» es precisamente lo que
+            # hace el complemento. Sin este segundo intento la auditoria
+            # declaraba ausentes osgeo.gdal y osgeo.ogr en un QGIS que los
+            # tiene -- un falso positivo que bloqueaba CI.
+            try:
+                sub = importlib.import_module(f'{modulo}.{nombre}')
+            except ImportError:
                 faltan.append((modulo, nombre, 'no existe en este QGIS'))
             else:
-                objetos[nombre] = getattr(mod, nombre)
+                objetos[nombre] = sub
 
     for base, cadenas in sorted(atributos.items()):
         if base not in objetos:
