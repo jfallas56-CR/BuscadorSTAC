@@ -604,7 +604,7 @@ PLANTILLA_MAPTIP = """<div style="font-family:sans-serif; font-size:11px; text-a
 <b>[% attribute(@feature, 'id') %]</b><br>
 [% attribute(@feature, 'fecha') %] &nbsp;|&nbsp; tile [% attribute(@feature, 'tile') %]<br>
 Nubes escena: <b>[% round(attribute(@feature, 'nubes_pct'), 1) %] %</b>
-&nbsp;|&nbsp; <span style="color:#b00">dentro del AOI: <b>[% round(attribute(@feature, 'nubes_aoi'), 1) %] %</b></span><br>
+&nbsp;|&nbsp; <span style="color:#b00">dentro del AOI: <b>[% round(attribute(@feature, 'nubes_aoi'), 1) %] %</b></span><br>  # noqa: E501
 P&iacute;xeles &uacute;tiles en AOI: [% round(attribute(@feature, 'datos_pct'), 1) %] %
 </div>"""
 
@@ -1140,7 +1140,7 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             "solo descarga los bloques visibles.<br>"
             "• <i>Descargar recorte</i>: escribe un GeoTIFF comprimido por banda "
             "y escena, recortado al AOI.<br><br>"
-            "<b>Sensores:</b> Sentinel-2 L2A (10-20 m, desde 2017 en la región) y Landsat Collection 2 Nivel 2 (30 m, desde 1982). Las claves de banda son comunes a ambos, de modo que las composiciones RGB funcionan igual; Landsat no tiene red edge ni asset TCI, así que la vista previa se compone desde R/G/B y esas composiciones quedan vetadas. La nubosidad dentro del AOI se mide con SCL en Sentinel-2 y con los bits de QA_PIXEL en Landsat.<br><br>"
+            "<b>Sensores:</b> Sentinel-2 L2A (10-20 m, desde 2017 en la región) y Landsat Collection 2 Nivel 2 (30 m, desde 1982). Las claves de banda son comunes a ambos, de modo que las composiciones RGB funcionan igual; Landsat no tiene red edge ni asset TCI, así que la vista previa se compone desde R/G/B y esas composiciones quedan vetadas. La nubosidad dentro del AOI se mide con SCL en Sentinel-2 y con los bits de QA_PIXEL en Landsat.<br><br>"  # noqa: E501
             "<b>Flujo recomendado en Costa Rica (nubosidad alta):</b><br>"
             "1. Ejecute en modo <i>Solo catálogo</i> con miniaturas activadas "
             "y nubosidad de escena permisiva (50-70 %). Marque «Capa de "
@@ -2273,10 +2273,13 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
                 float(item.get('_datos_pct', -1.0)),
                 str(props.get('platform', '')),
                 self._tile_mgrs(props),
-                int(props.get('proj:epsg') or props.get('proj:code', '0').replace('EPSG:', '') or 0),
+                int(props.get('proj:epsg')
+                    or props.get('proj:code', '0').replace('EPSG:', '')
+                    or 0),
                 str(item.get('_thumb', '')),
                 _url_archivo(item.get('_thumb', '')),
-                _firmar_pc(href_vis, self._token_vigente(feedback, token)) if requiere_token else (href_vis or ''),
+                (_firmar_pc(href_vis, self._token_vigente(feedback, token))
+                 if requiere_token else (href_vis or '')),
                 self._serializar_assets(item),
                 coleccion,
                 base_url,

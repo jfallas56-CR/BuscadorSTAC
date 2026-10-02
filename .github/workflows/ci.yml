@@ -168,7 +168,18 @@ jobs:
       - name: Importar el complemento y registrar sus algoritmos
         # xvfb da un display a los widgets. Sin él, instanciar cualquier
         # cosa de Qt aborta.
-        run: xvfb-run -a python3 tools/smoke_test.py
+        shell: bash
+        run: |
+          set +e
+          xvfb-run -a python3 tools/smoke_test.py > /tmp/smoke.txt 2>&1
+          codigo=$?
+          cat /tmp/smoke.txt
+          if [ "${codigo:-1}" -ne 0 ]; then
+            grep -E '^  FALLA|^  - |Error|error:' /tmp/smoke.txt | head -10 \
+              | sed 's/^/::error::/'
+            echo "::error::smoke_test.py salio con codigo ${codigo:-?}"
+          fi
+          exit "${codigo:-1}"
 
   # ---------------------------------------------------------------------
   # El ZIP, como artefacto descargable de cada ejecución.
