@@ -42,7 +42,18 @@ jobs:
         run: python -m pip install -r requirements-dev.txt
 
       - name: Pruebas que no necesitan QGIS
-        run: python -m pytest tests -v --tb=short
+        shell: bash
+        run: |
+          set +e
+          python -m pytest tests -v --tb=short > /tmp/pytest.txt 2>&1
+          codigo=$?
+          cat /tmp/pytest.txt
+          if [ "${codigo:-1}" -ne 0 ]; then
+            grep -E '^(FAILED|ERROR)|^E ' /tmp/pytest.txt | head -10 \
+              | sed 's/^/::error::/'
+            echo "::error::pytest salio con codigo ${codigo:-?}"
+          fi
+          exit "${codigo:-1}"
 
       - name: Comprobaciones previas al portal
         # --sin-red porque el corredor no debe depender de que GitHub
@@ -141,22 +152,18 @@ jobs:
         # siempre se puede leer con la API, mientras que las anotaciones si.
         # Sin esto, «exit code 1» es todo lo que queda de un diagnostico que
         # SI dice que simbolo falta.
+        shell: bash
         run: |
           set +e
-          python3 tools/api_audit.py 2>&1 | tee /tmp/audit.txt
-          codigo=${PIPESTATUS[0]}
-          if [ "$codigo" -ne 0 ]; then
-            echo "::group::Resumen de la auditoria"
-            while IFS= read -r linea; do
-              case "$linea" in
-                *FALTA*|*falta*) echo "::error::$linea" ;;
-                *) echo "$linea" ;;
-              esac
-            done < /tmp/audit.txt
-            echo "::endgroup::"
-            echo "::error::api_audit.py salio con codigo $codigo"
+          python3 tools/api_audit.py > /tmp/audit.txt 2>&1
+          codigo=$?
+          cat /tmp/audit.txt
+          if [ "${codigo:-1}" -ne 0 ]; then
+            grep -iE 'falta|error' /tmp/audit.txt | head -8 \
+              | sed 's/^/::error::/'
+            echo "::error::api_audit.py salio con codigo ${codigo:-?}"
           fi
-          exit "$codigo"
+          exit "${codigo:-1}"
 
       - name: Importar el complemento y registrar sus algoritmos
         # xvfb da un display a los widgets. Sin él, instanciar cualquier
