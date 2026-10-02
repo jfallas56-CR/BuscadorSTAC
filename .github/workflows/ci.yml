@@ -32,6 +32,11 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
           cache: pip
+          # Hay que indicarlo: el patron por omision de
+          # setup-python para pip no cubre un archivo que no se
+          # llame requirements.txt, y la accion FALLA cuando no
+          # encuentra ninguno en vez de seguir sin cache.
+          cache-dependency-path: requirements-dev.txt
 
       - name: Instalar dependencias de desarrollo
         run: python -m pip install -r requirements-dev.txt
@@ -56,6 +61,11 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+          # Hay que indicarlo: el patron por omision de
+          # setup-python para pip no cubre un archivo que no se
+          # llame requirements.txt, y la accion FALLA cuando no
+          # encuentra ninguno en vez de seguir sin cache.
+          cache-dependency-path: requirements-dev.txt
       - run: python -m pip install -r requirements-dev.txt
 
       - name: flake8
@@ -125,7 +135,28 @@ jobs:
         # habitual en que un complemento se rompe al cambiar de versión.
         # El fallo es silencioso dentro de un post-procesador: la capa se
         # carga sin estilo y solo se ve leyendo el registro completo.
-        run: python3 tools/api_audit.py
+        #
+        # La salida se repite como anotaciones de GitHub a proposito: el
+        # registro de un trabajo se sirve desde almacenamiento externo y no
+        # siempre se puede leer con la API, mientras que las anotaciones si.
+        # Sin esto, «exit code 1» es todo lo que queda de un diagnostico que
+        # SI dice que simbolo falta.
+        run: |
+          set +e
+          python3 tools/api_audit.py 2>&1 | tee /tmp/audit.txt
+          codigo=${PIPESTATUS[0]}
+          if [ "$codigo" -ne 0 ]; then
+            echo "::group::Resumen de la auditoria"
+            while IFS= read -r linea; do
+              case "$linea" in
+                *FALTA*|*falta*) echo "::error::$linea" ;;
+                *) echo "$linea" ;;
+              esac
+            done < /tmp/audit.txt
+            echo "::endgroup::"
+            echo "::error::api_audit.py salio con codigo $codigo"
+          fi
+          exit "$codigo"
 
       - name: Importar el complemento y registrar sus algoritmos
         # xvfb da un display a los widgets. Sin él, instanciar cualquier
@@ -145,6 +176,11 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+          # Hay que indicarlo: el patron por omision de
+          # setup-python para pip no cubre un archivo que no se
+          # llame requirements.txt, y la accion FALLA cuando no
+          # encuentra ninguno en vez de seguir sin cache.
+          cache-dependency-path: requirements-dev.txt
       - run: python -m pip install -r requirements-dev.txt
       - run: python tools/preflight.py --sin-red --sin-color
       - uses: actions/upload-artifact@v4
