@@ -1286,11 +1286,28 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
         p = QgsProcessingParameterString(
             self.FECHA_INI, self.tr('Fecha inicial (AAAA-MM-DD)'),
             defaultValue='2025-01-01')
+        p.setHelp(self.tr(
+            'Extremo inicial del intervalo, <b>incluido</b>. Se compara contra '
+            'la fecha de toma que declara el catálogo, en UTC: una escena '
+            'captada al final del día en hora local puede figurar con la fecha '
+            'del día siguiente.<br><br>'
+            'Un intervalo anterior a la misión devuelve cero escenas sin que '
+            'eso sea un error: Landsat 8 empieza en 2013, Sentinel-2 en 2015 y '
+            'Landsat 9 en 2021. La disponibilidad de productos corregidos a '
+            'superficie arranca más tarde y depende de la colección.'))
         self.addParameter(p)
 
         p = QgsProcessingParameterString(
             self.FECHA_FIN, self.tr('Fecha final (AAAA-MM-DD)'),
             defaultValue=datetime.utcnow().strftime('%Y-%m-%d'))
+        p.setHelp(self.tr(
+            'Extremo final del intervalo, <b>incluido</b>. Por omisión es hoy '
+            'en UTC. No puede ser anterior a la inicial; si lo es, el '
+            'algoritmo se detiene antes de buscar.<br><br>'
+            'Los últimos días suelen venir vacíos aunque la escena ya exista: '
+            'el producto corregido a superficie se publica con retraso '
+            'respecto a la toma. Para confirmar una fecha reciente, consulte '
+            'primero en modo «Solo catálogo».'))
         self.addParameter(p)
 
         p = QgsProcessingParameterNumber(
@@ -1335,6 +1352,15 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             self.PX_MINIATURA, self.tr('Ancho de miniatura (píxeles)'),
             QgsProcessingParameterNumber.Integer,
             defaultValue=512, minValue=128, maxValue=2048)
+        p.setHelp(self.tr(
+            'Solo tiene efecto si se piden miniaturas. El alto se deduce de la '
+            'proporción del área, con corrección por cos(latitud), de modo que '
+            'la vista previa no sale estirada.<br><br>'
+            'Cada escena cuesta un recorte y una conversión a PNG, así que '
+            'subir este valor alarga la búsqueda y engorda la carpeta. 512 '
+            'basta para el consejo emergente y el formulario de atributos; '
+            'solo conviene más si la miniatura va a ir en una composición '
+            'impresa.'))
         self.addParameter(p)
 
         p = QgsProcessingParameterBoolean(
@@ -1572,6 +1598,14 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
         p = QgsProcessingParameterString(
             self.MESES_LLUVIA, self.tr('Meses de estación lluviosa'),
             defaultValue='5,6,7,8,9,10,11')
+        p.setHelp(self.tr(
+            'Números de mes separados por comas. El valor por omisión '
+            'corresponde al Pacífico norte de Costa Rica.<br><br>'
+            'Ningún mes puede figurar también en la estación seca: la '
+            'amplitud sería una diferencia contra sí misma y el algoritmo lo '
+            'rechaza antes de descargar. Un mes que no aparezca en ninguna de '
+            'las dos listas queda fuera del cálculo y se reporta como '
+            'huérfano, para que una escena excluida no pase inadvertida.'))
         self.addParameter(p)
 
         p = QgsProcessingParameterFile(
@@ -1660,6 +1694,17 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             self.N_CLASES, self.tr('Número de clases'),
             QgsProcessingParameterNumber.Integer,
             defaultValue=6, minValue=3, maxValue=12)
+        p.setHelp(self.tr(
+            'Solo tiene efecto con «Intervalo igual»; en modo continuo se '
+            'ignora. Las clases reparten por igual el rango entre los '
+            'límites.<br><br>'
+            'Con «Límites fijos» vacío los límites se calculan por capa, de '
+            'modo que una misma clase significa cosas distintas en cada fecha. '
+            'Con límites simétricos (−1,1 en los índices habituales) un '
+            'número <b>par</b> deja el cero justo en un borde de clase; uno '
+            'impar lo mete dentro de una clase y el color neutro deja de '
+            'marcar la frontera con significado físico, sobre lo que el '
+            'algoritmo avisa en el registro.'))
         self.addParameter(p)
 
         p = QgsProcessingParameterString(

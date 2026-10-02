@@ -439,3 +439,60 @@ def test_sin_red_no_bloquea_la_subida(copia):
     bloque = fuente.split('except (urllib.error.URLError')[1][:600]
     assert 'no concluyente' in bloque
     assert 'bloquea=False' not in bloque.split('inf.nota')[0] or True
+
+
+# =====================================================================
+# Ayuda de los parametros. El defecto que motivo estas dos pruebas tardo
+# cuatro vueltas de integracion continua en localizarse, porque solo lo
+# veia el smoke test dentro de QGIS y su mensaje no nombraba el parametro.
+# =====================================================================
+def test_detecta_un_parametro_sin_setHelp(copia):
+    """Quitar el setHelp() de un parametro real tiene que bloquear."""
+    ruta = os.path.join(copia, PAQUETE, 'esri_wayback_algoritmo.py')
+    fuente = open(ruta, encoding='utf-8').read()
+    # Se elimina la PRIMERA llamada a setHelp, con su cadena, dejando el
+    # addParameter intacto: es exactamente la forma del olvido real.
+    i = fuente.index('p.setHelp(')
+    j = fuente.index('self.addParameter(p)', i)
+    recortada = fuente[:i] + fuente[j:]
+    open(ruta, 'w', encoding='utf-8').write(recortada)
+    _, datos = _correr(copia)
+    assert _dice(datos, 'todo parametro lleva setHelp'), _bloqueantes(datos)
+
+
+def test_la_ayuda_de_otro_parametro_no_tapa_la_que_falta(copia):
+    """Regresion del recorrido por niveles.
+
+    Con el patron «p = Parametro(...); p.setHelp(...); addParameter(p)»
+    repetido sobre la misma variable, un recorrido con ast.walk() entrega
+    todas las asignaciones antes que todos los setHelp: basta que UN p
+    reciba ayuda para que todos los usos de p parezcan correctos. Asi
+    estuvo pasando la comprobacion un archivo con cinco parametros sin
+    ayuda.
+    """
+    ruta = os.path.join(copia, PAQUETE, 'zz_reuso_de_variable.py')
+    open(ruta, 'w', encoding='utf-8').write(
+        '"""Modulo sintetico de prueba: reutiliza la variable p."""\n'
+        '\n'
+        '\n'
+        'class AlgoritmoDePrueba(object):\n'
+        '    CON = "CON"\n'
+        '    SIN = "SIN"\n'
+        '\n'
+        '    def initAlgorithm(self, config=None):\n'
+        '        p = QgsProcessingParameterString(self.CON, "con ayuda")\n'
+        '        p.setHelp("esta si la lleva")\n'
+        '        self.addParameter(p)\n'
+        '\n'
+        '        p = QgsProcessingParameterString(self.SIN, "sin ayuda")\n'
+        '        self.addParameter(p)\n')
+    _, datos = _correr(copia)
+    assert _dice(datos, 'todo parametro lleva setHelp'), _bloqueantes(datos)
+    # Y tiene que nombrar el que falta, no solo decir que falta alguno.
+    etiquetas = dict(datos.get('bloqueantes', []))
+    detalle = ' '.join(str(v) for v in etiquetas.values())
+    assert 'SIN' in detalle, (
+        'el mensaje debe nombrar el parametro; si no, localizarlo cuesta '
+        'una vuelta entera de integracion continua: %r' % detalle)
+    assert 'CON' not in detalle, (
+        'el parametro que SI lleva ayuda no debe aparecer como faltante')

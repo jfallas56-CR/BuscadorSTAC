@@ -516,6 +516,102 @@ def comp_ids_algoritmos(inf):
                   f'Herramientas pero no en el menu.', bloquea=False)
 
 
+def _params_sin_ayuda(src, cuerpo):
+    """Parametros anadidos sin setHelp(), recorriendo EN ORDEN DE CODIGO.
+
+    ast.walk() recorre por NIVELES, no en orden de codigo: con el patron
+    habitual «p = Parametro(...); p.setHelp(...); self.addParameter(p)»
+    repetido con la misma variable, walk() entrega primero todas las
+    asignaciones y despues todos los setHelp, de modo que cualquier p que
+    reciba ayuda en algun sitio marca como buenos TODOS los usos de p. Esa
+    es la razon de que esto se escriba a mano con iter_child_nodes.
+    """
+    estado, res = {}, []
+
+    def nombre_de(call):
+        txt = ast.get_source_segment(src, call) or ''
+        m = re.search(r'self\.([A-Z_][A-Z_0-9]*)', txt)
+        return m.group(1) if m else '(sin constante)'
+
+    def visita(n):
+        if (isinstance(n, ast.Assign) and len(n.targets) == 1
+                and isinstance(n.targets[0], ast.Name)
+                and isinstance(n.value, ast.Call)):
+            nom = getattr(n.value.func, 'id',
+                          getattr(n.value.func, 'attr', ''))
+            if 'ProcessingParameter' in str(nom):
+                estado[n.targets[0].id] = [nombre_de(n.value), False]
+                return
+        if isinstance(n, ast.Call):
+            f = n.func
+            if (getattr(f, 'attr', '') == 'setHelp'
+                    and isinstance(f.value, ast.Name)
+                    and f.value.id in estado):
+                estado[f.value.id][1] = True
+                return
+            if getattr(f, 'attr', '') == 'addParameter':
+                a = n.args[0] if n.args else None
+                if isinstance(a, ast.Name) and a.id in estado:
+                    nom, tiene = estado[a.id]
+                    res.append((nom, tiene, n.lineno))
+                elif isinstance(a, ast.Call):
+                    # addParameter(Constructor(...)) en una sola expresion:
+                    # no queda referencia a la que llamar setHelp.
+                    res.append((nombre_de(a), False, n.lineno))
+                elif isinstance(a, ast.Name):
+                    res.append((a.id, False, n.lineno))
+                return
+        for h in ast.iter_child_nodes(n):
+            visita(h)
+
+    for st in cuerpo:
+        visita(st)
+    return res
+
+
+def comp_ayuda_parametros(inf):
+    """Todo parametro de Processing necesita setHelp().
+
+    Es el texto del panel de ayuda del dialogo: sin el, el usuario ve el
+    nombre del parametro y nada mas. Lo pide la lista de verificacion del
+    complemento y lo comprueba el smoke test dentro de QGIS -- pero ahi
+    cuesta una vuelta entera de integracion continua y solo dice que algo
+    falta. Comprobarlo aqui, sin QGIS, lo deja en la maquina de quien
+    edita y nombra el parametro concreto.
+    """
+    inf.seccion('Ayuda de los parametros de Processing')
+    total, faltantes = 0, []
+    for archivo in sorted(os.listdir(DIR_PAQUETE)):
+        if not archivo.endswith('.py'):
+            continue
+        ruta = os.path.join(DIR_PAQUETE, archivo)
+        src = _texto(ruta)
+        try:
+            arbol = ast.parse(src)
+        except SyntaxError:
+            continue
+        for n in ast.walk(arbol):
+            if not isinstance(n, ast.ClassDef):
+                continue
+            inis = [m for m in n.body
+                    if isinstance(m, ast.FunctionDef)
+                    and m.name == 'initAlgorithm']
+            if not inis:
+                continue
+            res = _params_sin_ayuda(src, inis[0].body)
+            total += len(res)
+            for nom, tiene, linea in res:
+                if not tiene:
+                    faltantes.append(f'{archivo}:{linea} {nom}')
+
+    if not inf.comprobar('se encontro al menos un initAlgorithm con '
+                         'parametros', total > 0):
+        return
+    inf.nota(f'{total} parametro(s) revisados')
+    inf.comprobar('todo parametro lleva setHelp()', not faltantes,
+                  'sin ayuda: ' + '; '.join(faltantes))
+
+
 def comp_escaneo(inf):
     """El escaner del portal. Es la comprobacion que no se ve en el ZIP."""
     inf.seccion('Escaneo de seguridad (lo que corre plugins.qgis.org)')
@@ -775,6 +871,7 @@ def main(argv=None):
         comp_icono(z, inf)
     comp_sintaxis(inf)
     comp_ids_algoritmos(inf)
+    comp_ayuda_parametros(inf)
     comp_escaneo(inf)
     comp_version_coherente(g, inf)
     comp_carga(ruta_zip, inf)

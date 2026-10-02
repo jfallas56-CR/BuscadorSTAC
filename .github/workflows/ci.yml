@@ -175,7 +175,14 @@ jobs:
           codigo=$?
           cat /tmp/smoke.txt
           if [ "${codigo:-1}" -ne 0 ]; then
-            grep -E '^  FALLA|^  - |Error|error:' /tmp/smoke.txt | head -10 \
+            # -A1 a proposito: la linea que NOMBRA el parametro o el
+            # simbolo concreto se imprime justo debajo de su FALLA. Sin
+            # ella la anotacion dice que algo falla pero no cual, y
+            # averiguarlo cuesta una vuelta entera de integracion.
+            grep -A1 -E '^  FALLA' /tmp/smoke.txt \
+              | grep -vE '^--$|^[[:space:]]*$' | head -20 \
+              | sed -e 's/^[[:space:]]*//' -e 's/^/::error::/'
+            grep -E '^  - |Error|error:' /tmp/smoke.txt | head -10 \
               | sed 's/^/::error::/'
             echo "::error::smoke_test.py salio con codigo ${codigo:-?}"
           fi
