@@ -1,0 +1,7 @@
+# Dependencias SOLO de desarrollo y de CI. El complemento en si no necesita
+# ninguna: funciona con lo que trae QGIS (biblioteca estandar, GDAL, numpy).
+# Mantenerlo asi es deliberado — pedir al usuario que instale algo en el
+# Python de QGIS puede romperle otros complementos.
+pytest>=7.0
+flake8>=6.0
+bandit>=1.7

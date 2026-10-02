@@ -1,0 +1,696 @@
+# -*- coding: utf-8 -*-
+"""Lógica pura del complemento: NI QGIS NI Qt.
+
+Este módulo no importa nada de qgis ni de osgeo a propósito. Esa es su
+única regla, y es lo que permite probar su contenido con pytest a secas,
+sin QGIS instalado y sin imitarlo con clases falsas. Un QGIS imitado
+introduce sus propios errores: un fallo del imitador se confunde con un
+fallo del código, y eso ya costó un ciclo de depuración sobre código que
+estaba bien.
+
+Lo que vive aquí son fórmulas, parseo, agrupación temporal, estimaciones y
+validaciones: cosas que no necesitan un proyecto abierto para tener
+sentido. Lo que NO vive aquí es cualquier cosa que construya una capa, un
+sumidero, un ráster o un diálogo.
+
+Las funciones que reciben una fuente de entidades (_items_desde_capa,
+_procedencia_huellas) la usan por pato: solo llaman a getFeatures(),
+fields() y featureCount(). No importan QGIS para eso, y por eso se pueden
+probar con un objeto cualquiera que ofrezca esos tres métodos.
+
+Se vuelven a enganchar en el algoritmo como staticmethod, de modo que los
+sitios de llamada siguen escribiéndose «self._foo(...)» y el traslado no
+cambió ni una línea de ellos.
+
+Autor    : Jorge Fallas (jfallas56@gmail.com)
+Licencia : GPL v2 o posterior
+Versión  : 1.0.0
+"""
+
+import json
+import math
+import os
+
+import numpy as np
+
+
+# ------------------------------------------------------------------------
+# Constantes del dominio
+# ------------------------------------------------------------------------
+# Todas las bandas reflectivas de Landsat C2 L2 son de 30 m.
+RES_LS = 30.0
+
+# QA_PIXEL de Collection 2 es un campo de bits de 16 bits.
+QA_BIT_RELLENO = 0          # 0 = con dato, 1 = relleno fuera de la escena
+
+QA_BITS_NUBOSOS = (
+    1,   # nube dilatada
+    2,   # cirro (solo OLI/TIRS, L8-9)
+    3,   # nube
+    4,   # sombra de nube
+)
+
+# --------------------------------------------------------------------------
+# Tasseled Cap: coeficientes por sensor
+# --------------------------------------------------------------------------
+# Orden de bandas común a todos los conjuntos, expresado en claves lógicas:
+#   azul, verde, rojo, NIR, SWIR1, SWIR2
+# que resuelven a B1-B5,B7 en TM/ETM+, B2-B7 en OLI y B2/B3/B4/B8/B11/B12 en
+# MSI. Validados por ortonormalidad: ‖v‖ = 1.0000 y v·w = 0.0000 en los cuatro
+# conjuntos (desviación máxima 1e-4), lo que descarta errores de transcripción.
+#
+# ADVERTENCIA METODOLÓGICA: cada conjunto se derivó para un tipo concreto de
+# reflectancia y NO es intercambiable.
+#   Crist (1985)      TM    -> factor de reflectancia (SUPERFICIE)  [coincide]
+#   Huang et al. 2002 ETM+  -> at-satellite (TOA)                    [no coincide]
+#   Zhai et al. 2022  OLI   -> reflectancia de SUPERFICIE            [coincide]
+#   Shi & Xu 2019     MSI   -> at-sensor (TOA, L1C)                  [no coincide]
+# Este script descarga productos de SUPERFICIE (Landsat C2 L2, Sentinel-2 L2A).
+# TM y OLI ya usan conjuntos derivados sobre superficie; ETM+ y MSI siguen sin
+# equivalente de adopción comparable y se marcan como desajuste en el registro.
+# Para ETM+ es práctica extendida aplicar Crist, dado que las bandas de ETM+ y
+# TM son casi idénticas; el archivo JSON de coeficientes permite hacerlo.
+TC_ORDEN_BANDAS = (
+    "blue (B02, 10 m)",
+    "green (B03, 10 m)",
+    "red (B04, 10 m)",
+    "nir (B08, 10 m)",
+    "swir16 (B11, 20 m)",
+    "swir22 (B12, 20 m)",
+)
+
+# --------------------------------------------------------------------------
+# Índices espectrales
+# --------------------------------------------------------------------------
+# (etiqueta, sufijo, bandas lógicas necesarias, solo_sentinel2)
+# Las fórmulas son normalizadas o razones simples: no dependen de coeficientes
+# calibrados por sensor, de modo que son directamente comparables entre
+# Sentinel-2 y Landsat siempre que se calculen sobre reflectancia, no sobre DN.
+INDICES_ESPECTRALES = [
+    ("NDVI — vigor general (NIR, Rojo)", "NDVI",
+     ("nir (B08, 10 m)", "red (B04, 10 m)"), False),
+    ("SAVI — NDVI ajustado por suelo, L=0.5", "SAVI",
+     ("nir (B08, 10 m)", "red (B04, 10 m)"), False),
+    ("NDMI — humedad del dosel (NIR, SWIR1)", "NDMI",
+     ("nir08 (B8A, 20 m)", "swir16 (B11, 20 m)"), False),
+    ("NBR — estructura y quema (NIR, SWIR2)", "NBR",
+     ("nir08 (B8A, 20 m)", "swir22 (B12, 20 m)"), False),
+    ("MSI — estrés hídrico (SWIR1/NIR)", "MSI",
+     ("swir16 (B11, 20 m)", "nir08 (B8A, 20 m)"), False),
+    ("NDRE — clorofila borde rojo (solo Sentinel-2)", "NDRE",
+     ("nir08 (B8A, 20 m)", "rededge1 (B05, 20 m)"), True),
+    ("CIre — índice de clorofila borde rojo (solo Sentinel-2)", "CIre",
+     ("rededge3 (B07, 20 m)", "rededge1 (B05, 20 m)"), True),
+    ("Tasseled Cap — Wetness (humedad y sombra de dosel)", "TCW",
+     TC_ORDEN_BANDAS, False),
+    ("Tasseled Cap — Greenness", "TCG", TC_ORDEN_BANDAS, False),
+    ("Tasseled Cap — Brightness", "TCB", TC_ORDEN_BANDAS, False),
+]
+
+# Rango físico admisible de cada índice. Fuera de él, el valor no es una
+# medida sino un artefacto de un denominador cercano a cero (ver
+# _acotar_indice). Los componentes Tasseled Cap no se acotan: son
+# combinaciones lineales, no razones, y su rango depende del conjunto de
+# coeficientes.
+LIMITES_INDICE = {
+    'NDVI': (-1.0, 1.0),
+    'SAVI': (-1.5, 1.5),      # el factor 1.5 de la fórmula amplía la cota
+    'NDMI': (-1.0, 1.0),
+    'NBR':  (-1.0, 1.0),
+    'NDRE': (-1.0, 1.0),
+    'MSI':  (0.0, 10.0),      # razón: negativa es imposible, >10 es artefacto
+    'CIre': (-1.0, 20.0),     # razón desplazada en -1
+}
+
+
+def _res_nativa(clave_logica, familia="s2"):
+    """Resolución en metros del asset, según familia de sensor."""
+    if familia == "ls":
+        return RES_LS
+    return RES_NATIVA.get(clave_logica, 10.0)
+
+
+# Resolución nativa en metros por asset. Determina xRes/yRes de salida y evita
+# que GDAL elija un tamaño de píxel arbitrario vía SuggestedWarpOutput.
+RES_NATIVA = {
+    "visual (RGB 8-bit)": 10.0,
+    "blue (B02, 10 m)": 10.0,
+    "green (B03, 10 m)": 10.0,
+    "red (B04, 10 m)": 10.0,
+    "rededge1 (B05, 20 m)": 20.0,
+    "rededge2 (B06, 20 m)": 20.0,
+    "rededge3 (B07, 20 m)": 20.0,
+    "nir (B08, 10 m)": 10.0,
+    "nir08 (B8A, 20 m)": 20.0,
+    "swir16 (B11, 20 m)": 20.0,
+    "swir22 (B12, 20 m)": 20.0,
+    "scl (máscara de clases)": 20.0,
+}
+
+
+# ------------------------------------------------------------------------
+# Funciones puras
+# ------------------------------------------------------------------------
+
+def _tamano_salida(bbox, ancho_px):
+    """Ancho/alto en píxeles conservando la proporción real del AOI.
+
+    La corrección por cos(latitud) evita miniaturas estiradas: a 10° N un
+    grado de longitud mide ~98 % de un grado de latitud.
+    """
+    dx = abs(bbox[2] - bbox[0])
+    dy = abs(bbox[3] - bbox[1])
+    if dx <= 0 or dy <= 0:
+        return int(ancho_px), int(ancho_px)
+    lat_media = math.radians((bbox[1] + bbox[3]) / 2.0)
+    dx_corr = dx * max(0.05, math.cos(lat_media))
+    alto = int(round(ancho_px * (dy / dx_corr)))
+    return int(ancho_px), max(16, min(alto, 4096))
+
+
+def _destino_sumidero(crudo):
+    """Texto del destino de un sumidero (cadena o definición de salida).
+
+    Processing entrega el valor de un sumidero bien como cadena, bien
+    como QgsProcessingOutputLayerDefinition, cuyo destino real está en
+    «sink» como QgsProperty. Mirar solo str() del segundo no sirve.
+    """
+    if crudo is None:
+        return ''
+    sink = getattr(crudo, 'sink', None)
+    if sink is not None:
+        valor = getattr(sink, 'staticValue', None)
+        if callable(valor):
+            try:
+                return str(valor() or '').strip()
+            except (TypeError, RuntimeError, AttributeError):
+                pass
+    return str(crudo or '').strip()
+
+
+def _salida_volatil(crudo):
+    """True si el destino de las huellas no sobrevive a la sesión."""
+    texto = _destino_sumidero(crudo).upper()
+    if not texto:
+        return False
+    return ('TEMPORARY_OUTPUT' in texto
+            or texto == 'MEMORY'
+            or texto.startswith('MEMORY:'))
+
+
+def _procedencia_huellas(fuente):
+    """(catalogo, coleccion, n_entidades) de la capa de huellas revisada.
+
+    Devuelve catalogo=None cuando la capa NO trae el campo «catalogo»:
+    las huellas de una versión anterior del complemento no lo tienen. Eso
+    no se rechaza —dejaría inservibles las capas ya guardadas— sino que
+    se avisa al ejecutar, igual que un manifiesto de HyP3 sin bbox.
+
+    Se lee una sola entidad: basta para la procedencia y evita recorrer
+    la capa entera en el hilo principal durante la validación.
+    """
+    try:
+        campos = fuente.fields()
+        nombres = {campos.at(i).name() for i in range(campos.count())}
+    except (AttributeError, RuntimeError, TypeError):
+        return None, None, -1
+
+    try:
+        n = int(fuente.featureCount())
+    except (AttributeError, TypeError, ValueError):
+        n = -1
+
+    cat = col = None
+    vistas = 0
+    try:
+        for feat in fuente.getFeatures():
+            vistas += 1
+            if 'catalogo' in nombres:
+                cat = str(feat['catalogo'] or '').strip() or None
+            if 'coleccion' in nombres:
+                col = str(feat['coleccion'] or '').strip() or None
+            break
+    except (RuntimeError, KeyError, TypeError):
+        return cat, col, n
+    # featureCount() puede no estar disponible en algunas fuentes; si no
+    # lo está, al menos se sabe si había o no una primera entidad.
+    if n < 0:
+        n = vistas
+    return cat, col, n
+
+
+def _items_desde_capa(fuente, feedback):
+    """Reconstruye items STAC mínimos desde la capa de huellas revisada."""
+    items = []
+    for feat in fuente.getFeatures():
+        try:
+            crudo = feat['assets']
+            assets = json.loads(crudo) if crudo else {}
+        except Exception as e:
+            feedback.pushWarning(
+                f"[_items_desde_capa] Campo «assets» ilegible en "
+                f"{feat.id()}: {e}. Entidad omitida.")
+            continue
+        if not assets:
+            feedback.pushWarning(
+                f"[_items_desde_capa] Entidad {feat.id()} sin URL de "
+                f"assets; omitida.")
+            continue
+
+        fecha = feat['fecha'] or ''
+        hora = feat['hora_utc'] or '00:00:00'
+        items.append({
+            'id': feat['id'],
+            'geometry': None,
+            'properties': {
+                'datetime': f"{fecha}T{hora}Z",
+                'eo:cloud_cover': feat['nubes_pct'],
+                'platform': feat['plataforma'],
+                's2:mgrs_tile': feat['tile'],
+                # Malla ya resuelta en la ejecución previa;
+                # vale para ambos sensores sin reconstruirla.
+                '_malla': feat['tile'],
+                'proj:epsg': feat['epsg'],
+            },
+            'assets': {k: {'href': v} for k, v in assets.items()},
+            '_nubes_aoi': feat['nubes_aoi'],
+            '_datos_pct': feat['datos_pct'],
+            '_thumb': feat['thumb'],
+        })
+    return items
+
+
+def _memoria_estimada(bbox4326, indices_sel, amplitud, n_fechas,
+                      familia, estirar=False):
+    """(GiB de pico, ancho_px, alto_px) del cálculo pedido.
+
+    El modelo sigue lo que el código hace de verdad, no una regla
+    aproximada. Ni `_calcular_indices` ni `_amplitud_fenologica` procesan
+    por bloques: cada banda entra completa con `ReadAsArray`, de modo que
+    el pico es el número de arreglos vivos a la vez por el tamaño en
+    píxeles del recorte.
+
+      _calcular_indices, por índice y fecha:
+          len(bandas) arreglos + resultado + máscara de nube
+        Se procesa un índice y una fecha a la vez, así que cuenta el
+        índice más costoso, no la suma. Tasseled Cap pide seis bandas
+        —tres de ellas de 10 m— y es por lejos el peor caso.
+
+      _amplitud_fenologica, por índice:
+          `pilas` guarda las dos estaciones completas (N arreglos) y
+          `np.stack(...).astype(float32)` las vuelve a copiar (2N). A eso
+          se suman n_seca y n_lluvia (int64: dos float32 cada uno),
+          med_seca, med_lluvia, amplitud y la máscara `suficiente`
+          ≈ 8 equivalentes.
+
+    `familia` llega como argumento en vez de leerse de `self._familia`
+    porque este método corre desde checkParameterValues, antes de que
+    processAlgorithm asigne ese atributo.
+    """
+    lat_media = math.radians((bbox4326[1] + bbox4326[3]) / 2.0)
+    ancho_m = abs(bbox4326[2] - bbox4326[0]) * 111320.0 * math.cos(lat_media)
+    alto_m = abs(bbox4326[3] - bbox4326[1]) * 110570.0
+
+    pico = 0.0
+    ancho_px = alto_px = 1.0
+    for i in indices_sel:
+        bandas_log = INDICES_ESPECTRALES[i][2]
+        # Todas las bandas del índice se remuestrean a la más fina.
+        res = min(_res_nativa(b, familia) for b in bandas_log)
+        w = max(1.0, ancho_m / res)
+        h = max(1.0, alto_m / res)
+        capas = len(bandas_log) + 2.0
+        if amplitud:
+            capas = max(capas, 2.0 * max(1, n_fechas) + 8.0)
+        bytes_pico = w * h * 4.0 * capas
+        if bytes_pico > pico:
+            pico, ancho_px, alto_px = bytes_pico, w, h
+
+    if not indices_sel:
+        res = RES_LS if familia == 'ls' else 10.0
+        ancho_px = max(1.0, ancho_m / res)
+        alto_px = max(1.0, alto_m / res)
+        if estirar:
+            # _percentiles_vrt lee una banda entera, la convierte a
+            # float32 y filtra los finitos: unos tres equivalentes vivos.
+            pico = ancho_px * alto_px * 4.0 * 3.0
+        else:
+            # Componer bandas sin escalado va todo por Warp/Translate,
+            # que escriben por bloques. Este código no acumula nada, así
+            # que no hay techo que imponer.
+            pico = 0.0
+
+    return pico / (1024.0 ** 3), ancho_px, alto_px
+
+
+def _agrupar_por_periodo(candidatos, estrategia, n_cand, feedback):
+    """Agrupa por año o mes y devuelve las n_cand escenas de menor nube.
+
+    Ordenar por eo:cloud_cover aquí es solo una preselección barata: el
+    criterio definitivo es la nubosidad sobre el AOI, que se mide después
+    leyendo SCL de estos candidatos.
+    """
+    grupos = {}
+    for item in candidatos:
+        fecha = str(item.get('properties', {}).get('datetime', ''))[:10]
+        if len(fecha) < 7:
+            continue
+        clave = fecha[:4] if estrategia == 'anual' else fecha[:7]
+        nubes = item.get('properties', {}).get('eo:cloud_cover')
+        grupos.setdefault(clave, []).append(
+            (float(nubes) if nubes is not None else 100.0, item))
+
+    recortado = {}
+    for clave, lista in grupos.items():
+        lista.sort(key=lambda par: par[0])
+        recortado[clave] = [par[1] for par in lista[:n_cand]]
+    return recortado
+
+
+def _periodos_sin_datos(grupos, f_ini, f_fin, estrategia, nubes,
+                        feedback):
+    """Informa qué años/meses del rango pedido quedaron sin candidatos."""
+    try:
+        ini = int(f_ini[:4])
+        fin = int(f_fin[:4])
+        if estrategia == 'anual':
+            esperados = [str(a) for a in range(max(ini, 2017), fin + 1)]
+        else:
+            esperados = []
+            for anio in range(max(ini, 2017), fin + 1):
+                esperados.extend(f"{anio}-{m:02d}" for m in range(1, 13))
+            esperados = [e for e in esperados if f_ini[:7] <= e <= f_fin[:7]]
+
+        vacios = [e for e in esperados if e not in grupos]
+        if vacios:
+            feedback.pushWarning(
+                f"[!] Sin ninguna escena en {len(vacios)} periodo(s): "
+                f"{', '.join(vacios)}.")
+            feedback.pushWarning(
+                f"    Causa habitual: el filtro «Nubosidad máxima de la "
+                f"ESCENA COMPLETA» ({nubes} %) se aplica en el servidor "
+                f"sobre la teselá de 110 km y elimina el periodo antes de "
+                f"evaluar su AOI. Súbalo a 90 % y vuelva a ejecutar. "
+                f"Un mosaico anual sin nubes (p. ej. EOX s2cloudless) NO "
+                f"prueba que exista una escena individual despejada: se "
+                f"construye combinando píxeles claros de muchas fechas.")
+    except Exception as e:
+        feedback.pushDebugInfo(f"[periodos_sin_datos] {e}")
+
+
+def _reducir_por_periodo(items, estrategia, feedback):
+    """Conserva por periodo la escena con menos nube DENTRO del AOI."""
+    mejores = {}
+    for item in items:
+        fecha = str(item.get('properties', {}).get('datetime', ''))[:10]
+        if len(fecha) < 7:
+            continue
+        clave = fecha[:4] if estrategia == 'anual' else fecha[:7]
+        nubes_aoi = item.get('_nubes_aoi', -1.0)
+        # Un -1 (SCL ilegible) se ordena al final, pero se conserva si es
+        # lo único que hay en ese periodo.
+        puntua = nubes_aoi if nubes_aoi is not None and nubes_aoi >= 0 else 999.0
+        previo = mejores.get(clave)
+        if previo is None or puntua < previo[0]:
+            mejores[clave] = (puntua, item)
+
+    feedback.pushInfo("\nSelección definitiva por periodo (nube sobre el AOI):")
+    seleccion = []
+    for clave in sorted(mejores):
+        puntua, item = mejores[clave]
+        seleccion.append(item)
+        etiqueta = f"{puntua:5.1f} %" if puntua < 999 else "  n/d"
+        escena = item.get('properties', {}).get('eo:cloud_cover') or 0.0
+        feedback.pushInfo(
+            f"  {clave}: {str(item.get('id', ''))[:40]:<40} "
+            f"AOI {etiqueta}  (teselá {float(escena):.0f} %)")
+    return seleccion
+
+# ------------------------------------------------------- Landsat: calidad
+
+
+def _mascaras_qa_pixel(arr):
+    """Descompone QA_PIXEL de Landsat C2 en (sin_dato, nube).
+
+    QA_PIXEL es un campo de bits de 16 bits, no una clasificación por
+    valores: hay que consultar bit a bit. Interpretarlo como códigos de
+    clase (al estilo SCL) daría resultados sin sentido.
+    """
+    arr = arr.astype(np.uint16)
+    sin_dato = (arr & (1 << QA_BIT_RELLENO)) != 0
+    nube = np.zeros(arr.shape, dtype=bool)
+    for bit in QA_BITS_NUBOSOS:
+        nube |= (arr & (1 << bit)) != 0
+    return sin_dato, nube
+
+
+def _acotar_indice(sufijo, valores, feedback):
+    """Marca como NaN los valores fuera del rango físico del índice.
+
+    Un índice normalizado (a-b)/(a+b) solo está acotado en [-1, 1] si a y
+    b son positivos. El desplazamiento BOA de -0.1 permite reflectancias
+    negativas a propósito (para no truncar superficies oscuras), así que
+    sobre agua o sombra profunda el denominador puede acercarse a cero con
+    signos opuestos: con NIR=0.030 y SWIR=-0.028 el NDMI sale 29.0, un
+    valor FINITO que el filtro isfinite deja pasar y que contamina el
+    rango, el realce y la mediana estacional.
+
+    Los índices de razón (MSI, CIre) no tienen cota teórica superior; para
+    ellos solo se descarta el signo imposible y valores absurdamente altos.
+    """
+    limites = LIMITES_INDICE.get(sufijo)
+    if limites is None:
+        return valores
+    lo, hi = limites
+    fuera = np.isfinite(valores) & ((valores < lo) | (valores > hi))
+    n_fuera = int(fuera.sum())
+    if n_fuera:
+        total = int(np.isfinite(valores).sum()) or 1
+        feedback.pushWarning(
+            f"[!] {sufijo}: {n_fuera} píxel(es) ({100.0 * n_fuera / total:.2f} %) "
+            f"fuera del rango físico [{lo}, {hi}] y marcados como sin dato. "
+            f"Suele indicar reflectancia negativa sobre agua o sombra "
+            f"profunda, donde el denominador del índice se acerca a cero.")
+        valores = np.where(fuera, np.nan, valores)
+    return valores
+
+# ------------------------------ coeficientes Tasseled Cap intercambiables
+
+
+def _validar_ortonormalidad(conjunto, nombre, feedback, tol=0.02):
+    """Comprueba que B, G y W formen una rotación ortonormal.
+
+    La transformación Tasseled Cap es una rotación rígida: cada vector debe
+    tener norma 1 y ser ortogonal a los otros dos. Es la prueba que detecta
+    un dígito mal copiado sin necesidad de volver al artículo.
+    """
+    try:
+        vectores = {k: np.array(conjunto[k], dtype=float) for k in 'BGW'}
+    except KeyError as e:
+        feedback.pushWarning(
+            f"[_validar_ortonormalidad] {nombre}: falta la componente {e}.")
+        return False
+
+    longitudes = {k: len(v) for k, v in vectores.items()}
+    if len(set(longitudes.values())) != 1:
+        feedback.pushWarning(
+            f"[_validar_ortonormalidad] {nombre}: las componentes tienen "
+            f"distinto número de coeficientes {longitudes}.")
+        return False
+
+    err_norma = max(abs(float(np.linalg.norm(v)) - 1.0)
+                    for v in vectores.values())
+    pares = (('B', 'G'), ('B', 'W'), ('G', 'W'))
+    err_ortog = max(abs(float(vectores[a] @ vectores[b])) for a, b in pares)
+
+    if err_norma < tol and err_ortog < tol:
+        feedback.pushInfo(
+            f"  {nombre}: ortonormalidad correcta "
+            f"(máx|‖v‖-1| = {err_norma:.4f}, máx|v·w| = {err_ortog:.4f})")
+        return True
+
+    feedback.pushWarning(
+        f"[!] {nombre}: los coeficientes NO forman una rotación ortonormal "
+        f"(máx|‖v‖-1| = {err_norma:.4f}, máx|v·w| = {err_ortog:.4f}). "
+        f"Revise la transcripción: lo habitual es un dígito cambiado o una "
+        f"fila desplazada. Se usarán de todos modos, pero los componentes "
+        f"no serán independientes entre sí.")
+    return False
+
+
+def _escribir_plantilla_tc(carpeta, feedback):
+    """Deja un JSON de ejemplo con el esquema exacto que espera el lector."""
+    ruta = os.path.join(carpeta, 'tc_coeficientes_plantilla.json')
+    if os.path.exists(ruta):
+        return ruta
+    plantilla = {
+        "_comentario": (
+            "Sustituya los valores por los del artículo que corresponda. "
+            "El orden de los seis coeficientes es SIEMPRE: azul, verde, "
+            "rojo, NIR, SWIR1, SWIR2. Indique en «tipo» si el conjunto se "
+            "derivó sobre reflectancia de 'superficie' o 'TOA'. Grupos "
+            "admitidos: TM (Landsat 4/5), ETM (Landsat 7), OLI (Landsat "
+            "8/9), MSI (Sentinel-2). TM y OLI ya traen conjuntos de "
+            "superficie; los pendientes son ETM y MSI."),
+        "ETM": {
+            "ref": "Sustituya por el conjunto de superficie que decida usar",
+            "tipo": "superficie",
+            "B": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            "G": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            "W": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        },
+    }
+    try:
+        with open(ruta, 'w', encoding='utf-8') as fh:
+            json.dump(plantilla, fh, ensure_ascii=False, indent=2)
+        feedback.pushInfo(
+            f"Plantilla de coeficientes escrita en: {ruta}\n"
+            f"  Rellénela con la tabla del artículo y vuelva a ejecutar "
+            f"indicándola en «Coeficientes Tasseled Cap alternativos».")
+        return ruta
+    except Exception as e:
+        feedback.pushWarning(f"[_escribir_plantilla_tc] {e}")
+        return None
+
+# ---------------------------------------------------- amplitud fenológica
+
+
+def _parsear_meses(texto):
+    """Convierte '12,1,2' en [12, 1, 2]. Devuelve [] si algo no encaja."""
+    meses = []
+    for trozo in str(texto or '').replace(';', ',').split(','):
+        trozo = trozo.strip()
+        if not trozo:
+            continue
+        try:
+            m = int(trozo)
+        except ValueError:
+            return []
+        if not 1 <= m <= 12:
+            return []
+        meses.append(m)
+    return meses
+
+
+def _parsear_limites(texto):
+    """Convierte 'mín,máx' en (float, float). None si está vacío o es inválido."""
+    texto = str(texto or '').strip()
+    if not texto:
+        return None
+    partes = [t.strip() for t in texto.replace(';', ',').split(',')]
+    if len(partes) != 2:
+        return None
+    try:
+        lo, hi = float(partes[0]), float(partes[1])
+    except ValueError:
+        return None
+    if not hi > lo:
+        return None
+    return (lo, hi)
+
+
+def _codigo_meses(meses):
+    """Código compacto de una lista de meses para el nombre de archivo.
+
+    Contiguo -> '12-04' (admite el salto de diciembre a enero, que es el
+    caso normal de la estación seca en el Pacífico norte).
+    No contiguo -> '01.03.07'.
+    """
+    unicos = sorted(set(int(m) for m in meses if 1 <= int(m) <= 12))
+    if not unicos:
+        return 'NA'
+    if len(unicos) == 12:
+        return '01-12'
+
+    # Buscar un arranque tal que la secuencia sea contigua circularmente.
+    conjunto = set(unicos)
+    for inicio in unicos:
+        if ((inicio - 2) % 12) + 1 in conjunto:
+            continue                      # no es el principio de la racha
+        secuencia = []
+        actual = inicio
+        while actual in conjunto:
+            secuencia.append(actual)
+            actual = (actual % 12) + 1
+        if len(secuencia) == len(unicos):
+            return f"{secuencia[0]:02d}-{secuencia[-1]:02d}"
+        break
+    return '.'.join(f"{m:02d}" for m in unicos)
+
+
+# --------------------------------------------------------------------------
+# KML / KMZ: lo que no necesita QGIS
+# --------------------------------------------------------------------------
+# Topes de importacion de Google Earth Web, publicados por Google. Por
+# encima de ellos el archivo entra como capa de datos de SOLO LECTURA en
+# vez de como entidades editables. No impide verlo; cambia lo que se puede
+# hacer con el.
+TOPE_ENTIDADES_WEB = 10000
+TOPE_VERTICES_WEB = 250000
+
+
+def alfa_kml(opacidad_pct):
+    """Color KML para una opacidad en por ciento: 'aabbggrr'.
+
+    El canal alfa va PRIMERO en KML, no al final como en CSS o HTML, y los
+    componentes van en orden inverso (azul, verde, rojo). Equivocar el
+    orden con un blanco es inocuo —ffffff es simetrico— pero con cualquier
+    otro color daria un tinte en vez de transparencia, y el error no se ve
+    hasta abrir Google Earth.
+    """
+    pct = max(0, min(100, int(round(float(opacidad_pct)))))
+    alfa = int(round(pct * 255 / 100.0))
+    return '%02x%02x%02x%02x' % (alfa, 255, 255, 255)
+
+
+def insertar_opacidad_kml(texto, opacidad_pct):
+    """(texto, n_tocados). Mete <color> en cada <GroundOverlay> sin color.
+
+    KMLSUPEROVERLAY no expone la opacidad como opcion de creacion, asi que
+    se edita el KML ya escrito. Un <GroundOverlay> que ya trae <color> se
+    deja intacto: duplicar la etiqueta deja un KML invalido.
+    """
+    if '<GroundOverlay>' not in texto:
+        return texto, 0
+    etiqueta = '<color>%s</color>' % alfa_kml(opacidad_pct)
+    partes = texto.split('<GroundOverlay>')
+    salida = [partes[0]]
+    tocados = 0
+    for trozo in partes[1:]:
+        # ¿Este overlay ya tiene color, antes de que cierre?
+        fin = trozo.find('</GroundOverlay>')
+        cabeza = trozo if fin < 0 else trozo[:fin]
+        if '<color>' in cabeza:
+            salida.append('<GroundOverlay>' + trozo)
+        else:
+            salida.append('<GroundOverlay>' + etiqueta + trozo)
+            tocados += 1
+    return ''.join(salida), tocados
+
+
+def contar_kml(texto):
+    """{'marcadores', 'superposiciones', 'vertices'} de un KML.
+
+    Los vertices se cuentan sobre el contenido de <coordinates>, no sobre
+    las comas de todo el documento: un KML lleva comas en los nombres y en
+    las descripciones, y contarlas todas inflaba la cifra y disparaba un
+    aviso de tope que no correspondia.
+    """
+    cuenta = {'marcadores': texto.count('<Placemark'),
+              'superposiciones': texto.count('<GroundOverlay'),
+              'vertices': 0}
+    pos = 0
+    total = 0
+    while True:
+        i = texto.find('<coordinates', pos)
+        if i < 0:
+            break
+        j = texto.find('>', i)
+        k = texto.find('</coordinates>', j if j >= 0 else i)
+        if j < 0 or k < 0:
+            break
+        bloque = texto[j + 1:k]
+        total += len([t for t in bloque.replace('\n', ' ').split() if t])
+        pos = k + 1
+    cuenta['vertices'] = total
+    return cuenta

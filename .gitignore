@@ -1,0 +1,36 @@
+# Artefactos de Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Lo que construye tools/preflight.py
+dist/
+*.zip
+
+# Credenciales. Nada de esto debe llegar al repositorio NUNCA: el token de
+# Earthdata se guarda en la base de autenticacion cifrada de QGIS o en un
+# archivo FUERA del arbol de trabajo. Se listan por si alguien los deja
+# aqui por error — es como un complemento parecido acabo pudiendo publicar
+# la contrasena de quien lo ejecutara.
+credentials.txt
+*.token
+.env
+token*.txt
+*secret*
+
+# Proyectos y datos de prueba
+*.qgz
+*.qgs
+*.qgd
+*.gpkg-shm
+*.gpkg-wal
+*.tif.aux.xml
+
+# Sistema operativo y editores
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/
