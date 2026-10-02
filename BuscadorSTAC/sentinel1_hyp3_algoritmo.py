@@ -102,6 +102,7 @@ from osgeo import gdal
 from .buscar_sentinel2_algoritmo import (
     AUTOR, AUTOR_EMAIL, RealcePostProcessor, _TIPO_POLIGONO, _cargar_pendientes,
     _enum_qgis, _registrar_postproc)
+from .core import sin_prefijo_bearer
 
 _LOG = logging.getLogger('BuscadorSTAC')
 
@@ -357,14 +358,12 @@ def _clave_desde_auth(auth_id):
     # token portador es Authorization: Bearer <token>.
     for clave in mapa:
         if str(clave).strip().lower() == 'authorization':
-            valor = str(mapa[clave]).strip()
-            if valor.lower().startswith('bearer '):
-                valor = valor[7:].strip()
+            valor = sin_prefijo_bearer(mapa[clave])
             if valor:
                 return valor, f'configuración de autenticación «{auth_id}»'
     # Respaldo: el método «Básico» guarda el secreto en «password».
     for clave in ('password', 'token', 'bearer'):
-        valor = str(mapa.get(clave) or '').strip()
+        valor = sin_prefijo_bearer(mapa.get(clave))
         if valor:
             return valor, (f'configuración de autenticación «{auth_id}», '
                            f'campo «{clave}»')
@@ -404,13 +403,13 @@ def _leer_clave(ruta):
         try:
             with open(ruta, encoding='utf-8', errors='replace') as fh:
                 for linea in fh:
-                    linea = linea.strip()
+                    linea = sin_prefijo_bearer(linea)
                     if linea:
                         return linea, f"archivo «{os.path.basename(ruta)}»"
         except OSError as e:
             return '', f"no se pudo leer «{ruta}»: {e}"
         return '', f"«{ruta}» está vacío"
-    desde_entorno = (os.environ.get(VAR_ENTORNO_CLAVE) or '').strip()
+    desde_entorno = sin_prefijo_bearer(os.environ.get(VAR_ENTORNO_CLAVE))
     if desde_entorno:
         return desde_entorno, f"variable de entorno {VAR_ENTORNO_CLAVE}"
     return '', (f"no se indicó archivo de token y la variable "

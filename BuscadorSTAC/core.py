@@ -618,6 +618,37 @@ def _codigo_meses(meses):
     return '.'.join(f"{m:02d}" for m in unicos)
 
 
+def sin_prefijo_bearer(valor):
+    """Token desnudo: quita un «Bearer » inicial si viene pegado.
+
+    La ayuda del propio algoritmo dice que la cabecera va con valor
+    «Bearer <token>», asi que copiar esa forma entera al archivo de token o
+    a la variable de entorno es el error natural. Y entonces la peticion
+    sale con «Authorization: Bearer Bearer eyJ...», el servidor responde
+    401 y el mensaje culpa al token, que estaba bien: el usuario acaba
+    generando otro para nada.
+
+    Vive aqui, y no en cada via de lectura, porque las tres --
+    configuracion de autenticacion, archivo y entorno-- tienen que
+    devolver lo mismo. Tenerlo en una sola y no en las otras es
+    exactamente como aparecio la incoherencia.
+    """
+    texto = str(valor or '').strip()
+    while True:
+        bajo = texto.lower()
+        # Solo el prefijo y nada detras: es ausencia de token, no un token
+        # llamado «Bearer». Devolverlo haria salir «Bearer Bearer» y el 401
+        # volveria a culpar al token en vez de decir que falta.
+        if bajo == 'bearer':
+            return ''
+        # El espacio es lo que distingue el prefijo de un token que
+        # empiece por esas letras: recortar siete caracteres a ciegas
+        # convertiria «bearertoken123» en basura.
+        if bajo[:7] != 'bearer ':
+            return texto
+        texto = texto[7:].strip()
+
+
 # --------------------------------------------------------------------------
 # KML / KMZ: lo que no necesita QGIS
 # --------------------------------------------------------------------------

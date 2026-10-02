@@ -19,6 +19,47 @@ los que cuesta más volver a encontrar.
 ---
 
 
+## Correcciones tras el renombrado, antes de publicar la 1.0.0 — 2026-10-02
+
+Sin número de versión propio: la 1.0.0 todavía no está en el portal, así
+que esto forma parte de ella. **Si ya construyó un ZIP 1.0.0 antes de
+estos cambios, vuelva a construirlo**: dos ZIP distintos con el mismo
+número es justo lo que rompe la trazabilidad.
+
+- **El token de HyP3 admite ya la forma `Bearer <token>` en el archivo y
+  en la variable de entorno.** La vía de la configuración de
+  autenticación de QGIS quitaba ese prefijo; las otras dos lo tomaban
+  literal y la petición salía con `Authorization: Bearer Bearer eyJ...`.
+  El servidor responde 401 y el mensaje culpaba al token, de modo que el
+  usuario acababa generando otro para nada —con un token que estaba
+  bien. Lo peor del fallo es que la ayuda del propio algoritmo dice que
+  la cabecera vale «Bearer <token>», así que copiar esa forma entera era
+  el error natural, no un descuido. El recorte vive ahora en
+  `core.sin_prefijo_bearer()`, una sola función para las tres vías,
+  porque tenerlo en una y no en las otras es exactamente como apareció
+  la incoherencia. No muerde un token que empiece por esas letras
+  (`bearertoken123` queda igual) y trata «Bearer» a secas como ausencia
+  de token, que es lo que es.
+
+- **Ayuda en cinco parámetros del algoritmo principal** que no la
+  tenían: `FECHA_INI`, `FECHA_FIN`, `PX_MINIATURA`, `MESES_LLUVIA` y
+  `N_CLASES`. El panel de ayuda del diálogo mostraba el nombre del
+  parámetro y nada más.
+
+- **`preflight.py` comprueba ahora que todo parámetro lleve
+  `setHelp()`** (68 comprobaciones). Antes solo lo veía el smoke test
+  dentro de QGIS, lo que costaba una vuelta entera de integración
+  continua y además no decía cuál faltaba. El análisis con el que se
+  buscaron estaba mal: usaba `ast.walk()`, que recorre por NIVELES, de
+  modo que con el patrón `p = Parámetro(...); p.setHelp(...);
+  addParameter(p)` repetido sobre la misma variable bastaba con que un
+  `p` recibiera ayuda para que todos los usos de `p` parecieran
+  correctos. De ahí un «0 sin ayuda» con cinco sin ella. La prueba que
+  lo cubre falla si alguien vuelve a `ast.walk()`.
+
+---
+
+
 ## 1.34.0 — 2026-10-02
 
 **El paquete pasa a llamarse BuscadorSTAC.**

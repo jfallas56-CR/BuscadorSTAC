@@ -703,3 +703,50 @@ def test_contar_kml_no_revienta_con_etiquetas_truncadas():
 def test_topes_web_son_los_publicados_por_google():
     assert core.TOPE_ENTIDADES_WEB == 10000
     assert core.TOPE_VERTICES_WEB == 250000
+
+
+# =====================================================================
+# sin_prefijo_bearer. La ayuda del algoritmo dice que la cabecera vale
+# «Bearer <token>», de modo que copiar esa forma completa al archivo de
+# token es el error natural -- y daba un 401 cuyo mensaje culpaba al
+# token.
+# =====================================================================
+def test_quita_el_prefijo_bearer():
+    assert core.sin_prefijo_bearer('Bearer eyJabc') == 'eyJabc'
+
+
+def test_el_prefijo_bearer_no_distingue_mayusculas():
+    for crudo in ('bearer eyJabc', 'BEARER eyJabc', 'BeArEr eyJabc'):
+        assert core.sin_prefijo_bearer(crudo) == 'eyJabc', crudo
+
+
+def test_un_token_sin_prefijo_queda_igual():
+    assert core.sin_prefijo_bearer('eyJabc') == 'eyJabc'
+
+
+def test_no_muerde_un_token_que_empieza_por_bearer():
+    """«bearertoken» no lleva prefijo: sin el espacio no hay que cortar.
+
+    Recortar siete caracteres a ciegas convertiria un token valido en
+    basura, y el 401 resultante seria indistinguible del que se quiere
+    arreglar.
+    """
+    assert core.sin_prefijo_bearer('bearertoken123') == 'bearertoken123'
+    assert core.sin_prefijo_bearer('Bearereyjabc') == 'Bearereyjabc'
+
+
+def test_quita_el_prefijo_repetido():
+    assert core.sin_prefijo_bearer('Bearer Bearer eyJabc') == 'eyJabc'
+
+
+def test_tolera_vacio_y_none():
+    assert core.sin_prefijo_bearer(None) == ''
+    assert core.sin_prefijo_bearer('') == ''
+    assert core.sin_prefijo_bearer('   ') == ''
+    assert core.sin_prefijo_bearer('Bearer ') == ''
+
+
+def test_recorta_espacios_y_salto_de_linea_del_archivo():
+    """La via del archivo pasaba antes por .strip(); no se pierde eso."""
+    assert core.sin_prefijo_bearer('  Bearer eyJabc\n') == 'eyJabc'
+    assert core.sin_prefijo_bearer('eyJabc\n') == 'eyJabc'
