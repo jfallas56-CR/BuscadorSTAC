@@ -54,8 +54,14 @@ def seccion(titulo):
     print(f'\n{titulo}')
 
 
-def _raster_sintetico(ruta, bandas=1, tipo=None):
-    """GeoTIFF pequeño sobre Guanacaste, con valores de índice (-1 a 1)."""
+def _raster_sintetico(ruta, bandas=1, tipo=None, epsg=4326):
+    """GeoTIFF pequeño sobre Guanacaste, con valores de índice (-1 a 1).
+
+    epsg=32616 reproduce lo que descarga el propio complemento: el recorte
+    de Sentinel-2 / Landsat NO pasa dstSRS a gdal.Warp, así que conserva el
+    SRC nativo de la escena, que es UTM. El caso 4326 es el fácil y no
+    representa lo que el usuario tiene en el proyecto.
+    """
     import numpy as np
     from osgeo import gdal, osr
 
@@ -63,10 +69,14 @@ def _raster_sintetico(ruta, bandas=1, tipo=None):
     cols, filas = 60, 40
     drv = gdal.GetDriverByName('GTiff')
     ds = drv.Create(ruta, cols, filas, bandas, tipo)
-    # Un grado de lado, en el Pacífico norte de Costa Rica.
-    ds.SetGeoTransform([-85.8, 1.0 / cols, 0.0, 10.6, 0.0, -1.0 / filas])
+    if epsg == 4326:
+        # Un grado de lado, en el Pacífico norte de Costa Rica.
+        ds.SetGeoTransform([-85.8, 1.0 / cols, 0.0, 10.6, 0.0, -1.0 / filas])
+    else:
+        # El mismo sitio, en UTM 16N y con píxel de 30 m.
+        ds.SetGeoTransform([630000.0, 30.0, 0.0, 1172000.0, 0.0, -30.0])
     srs = osr.SpatialReference()
-    srs.ImportFromEPSG(4326)
+    srs.ImportFromEPSG(epsg)
     ds.SetProjection(srs.ExportToWkt())
     for b in range(1, bandas + 1):
         y, x = np.mgrid[0:filas, 0:cols]
@@ -129,6 +139,51 @@ def _dentro_del_kmz(ruta):
     return imagenes, con_overlay
 
 
+def _imagen_con_contenido(kmz, imagenes, tmp):
+    """¿Alguna imagen del KMZ tiene algo dibujado? (vistas, motivo).
+
+    La comprobacion que importa. Un KMZ con su GroundOverlay y su PNG
+    dentro, pero con el PNG transparente o de un color plano, se abre en
+    Google Earth sin ningun error y sin que se vea nada --que es la forma
+    exacta que tiene «no exporta el raster». Mirar solo si el archivo
+    existe da por bueno justo ese caso.
+    """
+    import numpy as np
+    from osgeo import gdal
+
+    vistas, motivos = 0, []
+    with zipfile.ZipFile(kmz) as z:
+        for n in imagenes[:12]:
+            destino = os.path.join(tmp, 'img_' + os.path.basename(n))
+            with open(destino, 'wb') as fh:
+                fh.write(z.read(n))
+            ds = gdal.Open(destino)
+            if ds is None:
+                motivos.append(f'{n}: GDAL no la abre')
+                continue
+            vistas += 1
+            bandas = [ds.GetRasterBand(i + 1).ReadAsArray()
+                      for i in range(ds.RasterCount)]
+            # Con canal alfa, lo primero es si hay algo opaco: todo a 0 es
+            # una imagen invisible, no una imagen oscura.
+            if ds.RasterCount == 4:
+                if int(np.max(bandas[3])) == 0:
+                    motivos.append(f'{n}: alfa todo a 0 (invisible)')
+                    continue
+                color = np.dstack(bandas[:3])[bandas[3] > 0]
+            else:
+                color = np.dstack(bandas)
+            if color.size == 0:
+                motivos.append(f'{n}: ningun pixel opaco')
+                continue
+            if int(np.max(color)) == int(np.min(color)):
+                motivos.append(f'{n}: color plano ({int(np.max(color))})')
+                continue
+            return True, f'{n} tiene contenido'
+    return False, (f'{vistas} imagen(es) revisadas; '
+                   + '; '.join(motivos[:4]))
+
+
 def _correr(alg, parametros, rec):
     """alg.run() devuelve (resultados, ok). Las excepciones NO se dejan
     escapar: el traceback es el dato que hace falta."""
@@ -149,6 +204,7 @@ def _probar_raster(etiqueta, ruta_tif, tmp, estilo=None):
     capa = QgsRasterLayer(ruta_tif, f'indice_{etiqueta}')
     if not comp(f'{etiqueta}: la capa sintetica carga', capa.isValid()):
         return
+    print(f'        SRC de la capa: {capa.crs().authid()}')
     comp(f'{etiqueta}: la capa trae renderizador de serie',
          capa.renderer() is not None,
          'sin renderizador el algoritmo se detiene a proposito')
@@ -182,11 +238,16 @@ def _probar_raster(etiqueta, ruta_tif, tmp, estilo=None):
          f'{os.path.getsize(destino)} bytes')
 
     imagenes, overlay = _dentro_del_kmz(destino)
-    comp(f'{etiqueta}: el KMZ lleva al menos una imagen', bool(imagenes),
-         'un KMZ sin PNG/JPG se abre en Google Earth y no se ve nada; '
-         'es el fallo que no da error')
+    if not comp(f'{etiqueta}: el KMZ lleva al menos una imagen',
+                bool(imagenes),
+                'un KMZ sin PNG/JPG se abre en Google Earth y no se ve '
+                'nada; es el fallo que no da error'):
+        return
     comp(f'{etiqueta}: el KML declara GroundOverlay', overlay,
          'sin GroundOverlay la imagen no se ancla al suelo')
+
+    hay, motivo = _imagen_con_contenido(destino, imagenes, tmp)
+    comp(f'{etiqueta}: la imagen del KMZ tiene contenido', hay, motivo)
 
 
 def _probar_vector(tmp):
@@ -273,6 +334,14 @@ def main():
         tif3 = _raster_sintetico(os.path.join(tmp, 'rgb.tif'), bandas=3,
                                  tipo=_g.GDT_Byte)
         _probar_raster('rgb', tif3, tmp)
+
+        seccion('Raster en UTM: lo que descarga el propio complemento')
+        # El recorte de Sentinel-2 / Landsat no pasa dstSRS, de modo que
+        # queda en el UTM de la escena. Si el caso 4326 pasa y este no, el
+        # SRC es la causa y no el controlador.
+        tif_utm = _raster_sintetico(os.path.join(tmp, 'utm.tif'),
+                                    epsg=32616)
+        _probar_raster('utm16n', tif_utm, tmp)
 
         seccion('Vectorial, para contraste')
         _probar_vector(tmp)
