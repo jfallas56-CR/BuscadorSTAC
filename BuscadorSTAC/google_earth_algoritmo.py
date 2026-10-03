@@ -70,6 +70,7 @@ from qgis.core import (QgsCoordinateReferenceSystem,
                        QgsRasterFileWriter,
                        QgsRasterLayer,
                        QgsRasterPipe,
+                       QgsRasterProjector,
                        QgsVectorFileWriter,
                        QgsVectorLayer)
 
@@ -385,6 +386,38 @@ class ExportarGoogleEarthAlgorithm(QgsProcessingAlgorithm):
                 'No se pudo aplicar el renderizador de la capa a la '
                 'tubería de exportación.')
 
+        # Sin esto, un ráster que no esté ya en WGS84 sale COMPLETAMENTE
+        # transparente y sin ningún error: el escritor recorre la extensión
+        # de destino en grados y se la pide al proveedor, que está en otro
+        # sistema, de modo que cada bloque cae fuera de la fuente y
+        # devuelve nodata. El KMZ resultante es válido, lleva su
+        # GroundOverlay y sus imágenes, y en Google Earth no se ve nada.
+        #
+        # Importa justo en el caso normal: el recorte de Sentinel-2 y
+        # Landsat de este mismo complemento conserva el UTM de la escena,
+        # así que lo que el usuario acaba de descargar es precisamente lo
+        # que no se exportaba.
+        if capa.crs() != crs4326:
+            proyector = QgsRasterProjector()
+            try:
+                proyector.setCrs(capa.crs(), crs4326,
+                                 context.transformContext())
+            except TypeError:
+                # Firma anterior, sin contexto de transformación.
+                proyector.setCrs(capa.crs(), crs4326)
+            # set() y no insert(): la tubería coloca cada interfaz según su
+            # papel, y el del proyector va después del renderizador. Fijar
+            # el índice a mano se rompe si ese orden cambia de versión.
+            if not tuberia.set(proyector):
+                raise QgsProcessingException(
+                    f'No se pudo añadir la reproyección de '
+                    f'{capa.crs().authid()} a EPSG:4326 a la tubería de '
+                    f'exportación. Reproyecte la capa a EPSG:4326 con '
+                    f'«Combar (reproyectar)» y vuelva a exportar.')
+            feedback.pushInfo(
+                f'Reproyección: {capa.crs().authid()} -> EPSG:4326 '
+                f'dentro de la tubería')
+
         escritor = QgsRasterFileWriter(tmp_tif)
         escritor.setOutputFormat('GTiff')
         resultado = escritor.writeRaster(tuberia, cols, filas, ext, crs4326,
@@ -397,6 +430,8 @@ class ExportarGoogleEarthAlgorithm(QgsProcessingAlgorithm):
                 f'La renderización del ráster falló (código {resultado}). '
                 f'Si la capa es muy grande, baje «lado máximo en píxeles».')
 
+        self._comprobar_visible(tmp_tif, capa, feedback)
+
         try:
             self._superoverlay(tmp_tif, destino, rotulo, formato, opacidad,
                                feedback)
@@ -407,6 +442,43 @@ class ExportarGoogleEarthAlgorithm(QgsProcessingAlgorithm):
                         os.remove(tmp_tif + sufijo)
                 except OSError as e:
                     feedback.pushDebugInfo(f'[limpieza] {tmp_tif}{sufijo}: {e}')
+
+    @staticmethod
+    def _comprobar_visible(tmp_tif, capa, feedback):
+        """Para si la imagen renderizada quedó entera transparente.
+
+        Ese es el fallo que no avisa: el KMZ sale válido, con su
+        GroundOverlay y sus imágenes, y en Google Earth no se ve nada. Sin
+        esta comprobación el usuario no tiene de dónde agarrar —no hay
+        error que buscar—, así que vale más detenerse aquí y decir por qué.
+
+        Se lee el canal alfa con estadísticas aproximadas y no con el
+        arreglo completo: de un 4096x4096 son unos 16 MiB por banda, y la
+        única pregunta es si hay algún píxel opaco.
+        """
+        if gdal is None:
+            return
+        ds = gdal.Open(tmp_tif)
+        if ds is None or ds.RasterCount < 4:
+            return
+        try:
+            maximo = ds.GetRasterBand(4).ComputeStatistics(True)[1]
+        except RuntimeError as e:
+            # Sin estadísticas no se puede concluir; no es motivo para
+            # abortar una exportación que quizá esté bien.
+            feedback.pushDebugInfo(f'[visible] no se pudo medir el alfa: {e}')
+            return
+        finally:
+            ds = None
+        if maximo and maximo > 0:
+            return
+        raise QgsProcessingException(
+            f'La imagen renderizada salió entera transparente, así que el '
+            f'KMZ se abriría en Google Earth sin que se viera nada. La capa '
+            f'«{capa.name()}» está en {capa.crs().authid()}. Comprueba que '
+            f'tenga datos en su extensión y que su simbología no sea toda '
+            f'transparente; si acaba de reproyectarla, vuelva a cargarla '
+            f'antes de exportar.')
 
     def _superoverlay(self, origen, destino, rotulo, formato, opacidad,
                       feedback):

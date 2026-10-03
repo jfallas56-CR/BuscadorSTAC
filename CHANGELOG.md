@@ -26,6 +26,28 @@ que esto forma parte de ella. **Si ya construyó un ZIP 1.0.0 antes de
 estos cambios, vuelva a construirlo**: dos ZIP distintos con el mismo
 número es justo lo que rompe la trazabilidad.
 
+- **El exportador a Google Earth no exportaba el ráster si la capa no
+  estaba ya en WGS84** — es decir, casi nunca. Faltaba un
+  `QgsRasterProjector` en la tubería: el escritor recorría la extensión
+  de destino en grados y se la pedía al proveedor, que estaba en UTM, de
+  modo que cada bloque caía fuera de la fuente y devolvía nodata. El KMZ
+  salía válido, con su `GroundOverlay` y sus imágenes, y en Google Earth
+  no se veía nada. Sin error en ninguna parte: nada que buscar en el
+  registro. Daba de lleno en el caso normal, porque el recorte de
+  Sentinel-2 y Landsat de este mismo complemento conserva el UTM de la
+  escena, así que lo que acababa de descargarse era precisamente lo que
+  no se exportaba. Un ráster ya en EPSG:4326 —las miniaturas, por
+  ejemplo— sí funcionaba, lo que explica que el fallo pareciera
+  intermitente.
+
+  Dos cosas más, para que no vuelva a ser silencioso: la exportación se
+  detiene con un mensaje si la imagen renderizada sale entera
+  transparente, y `tools/kmz_test.py` ejecuta ahora la exportación
+  completa en las cuatro versiones de QGIS y comprueba el CONTENIDO de
+  las imágenes del KMZ, no solo que estén. La primera versión de esa
+  prueba pasaba sin detectar nada, por mirar solo si el archivo existía
+  y por usar un ráster en 4326, que es el caso fácil.
+
 - **El token de HyP3 admite ya la forma `Bearer <token>` en el archivo y
   en la variable de entorno.** La vía de la configuración de
   autenticación de QGIS quitaba ese prefijo; las otras dos lo tomaban
