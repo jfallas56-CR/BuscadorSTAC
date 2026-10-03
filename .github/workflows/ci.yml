@@ -188,6 +188,26 @@ jobs:
           fi
           exit "${codigo:-1}"
 
+      - name: Exportar de verdad un ráster y un vector a KMZ
+        # El smoke test comprueba el armazón; esto ejecuta la exportación
+        # entera. Un fallo en la tubería de renderizado o en
+        # KMLSUPEROVERLAY no aparece de ninguna otra forma, y el peor caso
+        # es silencioso: KMZ válido sin imagen dentro, que en Google Earth
+        # se ve como «no exporta el ráster» sin ningún error.
+        shell: bash
+        run: |
+          set +e
+          xvfb-run -a python3 tools/kmz_test.py > /tmp/kmz.txt 2>&1
+          codigo=$?
+          cat /tmp/kmz.txt
+          if [ "${codigo:-1}" -ne 0 ]; then
+            grep -A3 -E '^  FALLA' /tmp/kmz.txt \
+              | grep -vE '^--$|^[[:space:]]*$' | head -30 \
+              | sed -e 's/^[[:space:]]*//' -e 's/^/::error::/'
+            echo "::error::kmz_test.py salio con codigo ${codigo:-?}"
+          fi
+          exit "${codigo:-1}"
+
   # ---------------------------------------------------------------------
   # El ZIP, como artefacto descargable de cada ejecución.
   # ---------------------------------------------------------------------
