@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# SPDX-License-Identifier: GPL-2.0-or-later
 """Arranca el complemento en un QGIS de verdad y lo recorre.
 
 Responde lo que ninguna prueba sin QGIS puede responder: ¿carga el

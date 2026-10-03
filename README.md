@@ -204,7 +204,14 @@ que dan un resultado plausible y equivocado, y dicen cómo se detectaron.
 
 ## Licencia
 
-GPL v2 o posterior. Ver [LICENSE](BuscadorSTAC/LICENSE).
+GPL **v2 o posterior** (SPDX: `GPL-2.0-or-later`).
+
+[LICENSE](LICENSE) es el texto de la GPL versión 2; el «o posterior» lo
+da la nota de licencia de cada archivo fuente, que es donde vive la
+concesión. Quien lo reciba puede acogerse a la v2 o a cualquier versión
+posterior, a su elección. El archivo está repetido dentro del paquete
+—[BuscadorSTAC/LICENSE](BuscadorSTAC/LICENSE)— porque el ZIP que se
+sube al portal tiene que llevar el suyo.
 
 ## Autor
 

@@ -317,7 +317,10 @@ Cite la fuente de las imágenes en cualquier producto derivado.
 
 ## Licencia
 
-GPL v2 o posterior. Texto completo en `LICENSE`.
+GPL **v2 o posterior** (SPDX: `GPL-2.0-or-later`). `LICENSE` trae el
+texto de la versión 2; el «o posterior» lo da la nota de licencia de
+cada archivo fuente, de modo que puede acogerse a la v2 o a cualquier
+versión posterior, a su elección.
 
 Copyright © 2026 Jorge Fallas <jfallas56@gmail.com>
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# SPDX-License-Identifier: GPL-2.0-or-later
 """Comprueba cada simbolo de QGIS y Qt que usa el complemento.
 
 El objetivo NO es saber si el complemento funciona —para eso hace falta

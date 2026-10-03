@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# SPDX-License-Identifier: GPL-2.0-or-later
 """
 Exportar a Google Earth (KMZ) — algoritmo de Processing
 =======================================================

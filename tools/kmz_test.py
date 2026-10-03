@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# SPDX-License-Identifier: GPL-2.0-or-later
 """Exporta de verdad un ráster y un vector a KMZ, dentro de un QGIS real.
 
 Es la prueba que faltaba. El smoke test comprueba el armazón --que los

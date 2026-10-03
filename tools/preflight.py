@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# SPDX-License-Identifier: GPL-2.0-or-later
 """Comprueba el complemento ANTES de subirlo a plugins.qgis.org.
 
 El portal rechaza por cosas que no se ven mirando el ZIP: un hallazgo

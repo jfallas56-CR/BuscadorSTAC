@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# SPDX-License-Identifier: GPL-2.0-or-later
 """Lógica pura del complemento: NI QGIS NI Qt.
 
 Este módulo no importa nada de qgis ni de osgeo a propósito. Esa es su
