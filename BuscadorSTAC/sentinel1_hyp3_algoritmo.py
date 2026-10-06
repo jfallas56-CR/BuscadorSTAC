@@ -1807,6 +1807,30 @@ cualquier producto derivado.</p>
         feedback.pushInfo(
             f"\nLote {lote} · {anio} · traza {traza} {direccion} · {res_m} m")
 
+        # Cómo se procesaron ESTOS productos, leído del manifiesto. Lo que
+        # QGIS lista arriba son los parámetros del diálogo, y en esta modo
+        # varios no se usan: el filtro de speckle, la radiometría y la
+        # escala los fijó el pedido y viajan dentro del dato. Sin decirlo,
+        # el registro muestra «FILTRO_SPECKLE: False» encima de unos
+        # productos filtrados, y quien lo lea concluye lo contrario de lo
+        # que tiene. El complemento ya evita esa clase de desajuste en las
+        # huellas; aquí faltaba.
+        filtro_man = man.get('filtro_speckle')
+        feedback.pushInfo(
+            f"Procesado del lote: radiometría "
+            f"{man.get('radiometria', '?')} · escala "
+            f"{man.get('escala', '?')} · filtro de speckle "
+            f"{'sí' if filtro_man else 'no'}")
+        pedido_ahora = self.parameterAsBool(
+            parameters, self.FILTRO_SPECKLE, context)
+        if filtro_man is not None and bool(pedido_ahora) != bool(filtro_man):
+            feedback.pushWarning(
+                f"[!] «Filtro de speckle» está en {pedido_ahora} en el "
+                f"diálogo, pero este lote se pidió con {bool(filtro_man)} y "
+                f"eso ya está en el dato. En el modo de recogida ese "
+                f"parámetro no hace nada: para cambiarlo hay que volver a "
+                f"pedir los productos.")
+
         # El recorte usa el AOI que se PIDIÓ, guardado en el manifiesto, y no
         # la extensión que haya en el diálogo ahora. Dos razones: la recogida
         # se repite varias veces hasta que terminan todos los trabajos, y debe
