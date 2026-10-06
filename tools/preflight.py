@@ -570,6 +570,79 @@ def _params_sin_ayuda(src, cuerpo):
     return res
 
 
+def comp_metodos_resueltos(inf):
+    """Toda llamada self._foo() se resuelve en su PROPIA clase.
+
+    Un «def» a nivel de modulo escrito EN MEDIO de una clase termina el
+    cuerpo de la clase: los metodos que vienen despues dejan de serlo y
+    quedan sueltos. El archivo compila, flake8 calla, pyflakes calla, las
+    baterias sin QGIS no los tocan y el paquete se importa sin ruido.
+    Falla al EJECUTAR, con AttributeError, y solo en la rama que llama al
+    metodo perdido.
+
+    Paso de verdad, y por eso existe esta comprobacion: al mover tres
+    ayudantes a nivel de modulo dentro del cuerpo de
+    Sentinel1Hyp3Algorithm, la clase perdio once metodos --_rect_4326
+    entre ellos-- y flake8, bandit, 133 pruebas, las 69 comprobaciones de
+    este guion y el smoke test en cuatro versiones de QGIS siguieron
+    todas en verde. El usuario lo encontro al segundo de ejecutar.
+
+    Solo se miran los nombres que empiezan por «_». Los heredados de
+    QgsProcessingAlgorithm --parameterAsInt, addParameter, tr...-- no
+    estan en el archivo y darian falsos positivos.
+    """
+    inf.seccion('Metodos que se resuelven en su clase')
+    huerfanos = []
+    clases = 0
+    for archivo in sorted(os.listdir(DIR_PAQUETE)):
+        if not archivo.endswith('.py'):
+            continue
+        try:
+            arbol = ast.parse(_texto(os.path.join(DIR_PAQUETE, archivo)))
+        except SyntaxError:
+            continue
+        for cls in [n for n in ast.walk(arbol)
+                    if isinstance(n, ast.ClassDef)]:
+            clases += 1
+            definidos = set()
+            for m in cls.body:
+                if isinstance(m, ast.FunctionDef):
+                    definidos.add(m.name)
+                elif isinstance(m, ast.Assign):
+                    # "_tamano_salida = staticmethod(_tamano_salida)" y
+                    # las constantes de clase cuentan como definidas.
+                    for t in m.targets:
+                        if isinstance(t, ast.Name):
+                            definidos.add(t.id)
+            usados = []
+            for n in ast.walk(cls):
+                # self._foo = ... tambien define.
+                if isinstance(n, ast.Assign):
+                    for t in n.targets:
+                        if (isinstance(t, ast.Attribute)
+                                and isinstance(t.value, ast.Name)
+                                and t.value.id == 'self'):
+                            definidos.add(t.attr)
+                # Solo las LLAMADAS: self._x sin llamar puede ser un
+                # atributo que se crea en otro sitio.
+                if (isinstance(n, ast.Call)
+                        and isinstance(n.func, ast.Attribute)
+                        and isinstance(n.func.value, ast.Name)
+                        and n.func.value.id == 'self'
+                        and n.func.attr.startswith('_')):
+                    usados.append((n.func.attr, n.lineno))
+            for nombre, linea in usados:
+                if nombre not in definidos:
+                    huerfanos.append(f'{archivo}:{linea} '
+                                     f'{cls.name}.self.{nombre}()')
+
+    if not inf.comprobar(f'se analizaron {clases} clase(s)', clases > 0):
+        return
+    inf.comprobar('toda llamada self._metodo() existe en su clase',
+                  not huerfanos,
+                  'no se resuelven: ' + '; '.join(sorted(set(huerfanos))))
+
+
 def comp_ayuda_parametros(inf):
     """Todo parametro de Processing necesita setHelp().
 
@@ -872,6 +945,7 @@ def main(argv=None):
         comp_icono(z, inf)
     comp_sintaxis(inf)
     comp_ids_algoritmos(inf)
+    comp_metodos_resueltos(inf)
     comp_ayuda_parametros(inf)
     comp_escaneo(inf)
     comp_version_coherente(g, inf)

@@ -577,6 +577,62 @@ def _acotar(sufijo, valores, feedback):
     return valores
 
 
+def _probar_vsicurl(url):
+    """Si GDAL puede leer los primeros bytes por /vsicurl/, sin el ZIP.
+
+    Todo lo demás de este diagnóstico lo pregunta urllib, que NO es el
+    cliente que falla: GDAL trae su propio curl, con su propio almacén de
+    certificados y su propia configuración de proxy. Que urllib reciba un
+    206 impecable no demuestra que el curl de GDAL pueda hacer la misma
+    petición —menos aún en Windows, donde los certificados y el proxy se
+    configuran por separado—. Preguntárselo al cliente que importa separa
+    «GDAL no llega al archivo» de «GDAL llega y no sabe leer el índice»,
+    que son dos averías distintas y hasta ahora se confundían.
+    """
+    try:
+        fh = gdal.VSIFOpenL('/vsicurl/' + url, 'rb')
+    except RuntimeError as e:
+        return f'GDAL por /vsicurl/: excepción ({e}).'
+    if fh is None:
+        return (f'GDAL NO pudo abrir la URL por /vsicurl/ '
+                f'({gdal.GetLastErrorMsg() or "sin mensaje"}): la avería '
+                f'está en la capa HTTP de GDAL —certificados o proxy—, no '
+                f'en el ZIP. urllib sí llega, así que no es la red.')
+    try:
+        cabeza = gdal.VSIFReadL(1, 4, fh) or b''
+    finally:
+        gdal.VSIFCloseL(fh)
+    if cabeza[:2] == b'PK':
+        return ('GDAL sí lee los primeros bytes por /vsicurl/ y empiezan '
+                'por PK, de modo que llega al archivo: la avería está en '
+                'la lectura del índice, no en el acceso.')
+    return (f'GDAL leyó por /vsicurl/, pero los primeros bytes no son los '
+            f'de un ZIP: {cabeza!r}.')
+
+
+def _estado_head(url, espera):
+    """Qué contesta el servidor a una petición HEAD, en una línea."""
+    try:
+        pet = urllib.request.Request(_url_https(url), method='HEAD')
+        # Esquema validado por _url_https arriba: B310 ya no aplica.
+        with urllib.request.urlopen(pet, timeout=espera) as r:  # nosec B310
+            codigo = getattr(r, 'status', None) or r.getcode()
+            largo = r.headers.get('Content-Length') or '(sin tamaño)'
+            return f'HTTP {codigo}, Content-Length {largo}'
+    except urllib.error.HTTPError as e:
+        return (f'HTTP {e.code} — GDAL averigua el tamaño con HEAD para '
+                f'saltar al índice del ZIP; si no la contesta, no puede '
+                f'listarlo')
+    except (urllib.error.URLError, TimeoutError, ValueError) as e:
+        return f'no respondió ({e})'
+
+
+def _total_de_rango(cabecera):
+    """Tamaño total que declara un Content-Range «bytes 0-1/985515996»."""
+    m = re.search(r'/(\d+)\s*$', str(cabecera or ''))
+    return int(m.group(1)) if m else 0
+
+
 class Sentinel1Hyp3Algorithm(QgsProcessingAlgorithm):
     """Sentinel-1 RTC vía ASF HyP3, con amplitud estacional."""
 
@@ -2061,62 +2117,6 @@ cualquier producto derivado.</p>
         return (f'{seguro}: HTTP {codigo}, rangos {rangos}, {tamano}, '
                 f'tipo {tipo}. HEAD: {estado_head}.{nota_tam} '
                 f'{_probar_vsicurl(url)}')
-
-
-def _probar_vsicurl(url):
-    """Si GDAL puede leer los primeros bytes por /vsicurl/, sin el ZIP.
-
-    Todo lo demás de este diagnóstico lo pregunta urllib, que NO es el
-    cliente que falla: GDAL trae su propio curl, con su propio almacén de
-    certificados y su propia configuración de proxy. Que urllib reciba un
-    206 impecable no demuestra que el curl de GDAL pueda hacer la misma
-    petición —menos aún en Windows, donde los certificados y el proxy se
-    configuran por separado—. Preguntárselo al cliente que importa separa
-    «GDAL no llega al archivo» de «GDAL llega y no sabe leer el índice»,
-    que son dos averías distintas y hasta ahora se confundían.
-    """
-    try:
-        fh = gdal.VSIFOpenL('/vsicurl/' + url, 'rb')
-    except RuntimeError as e:
-        return f'GDAL por /vsicurl/: excepción ({e}).'
-    if fh is None:
-        return (f'GDAL NO pudo abrir la URL por /vsicurl/ '
-                f'({gdal.GetLastErrorMsg() or "sin mensaje"}): la avería '
-                f'está en la capa HTTP de GDAL —certificados o proxy—, no '
-                f'en el ZIP. urllib sí llega, así que no es la red.')
-    try:
-        cabeza = gdal.VSIFReadL(1, 4, fh) or b''
-    finally:
-        gdal.VSIFCloseL(fh)
-    if cabeza[:2] == b'PK':
-        return ('GDAL sí lee los primeros bytes por /vsicurl/ y empiezan '
-                'por PK, de modo que llega al archivo: la avería está en '
-                'la lectura del índice, no en el acceso.')
-    return (f'GDAL leyó por /vsicurl/, pero los primeros bytes no son los '
-            f'de un ZIP: {cabeza!r}.')
-
-
-def _estado_head(url, espera):
-    """Qué contesta el servidor a una petición HEAD, en una línea."""
-    try:
-        pet = urllib.request.Request(_url_https(url), method='HEAD')
-        # Esquema validado por _url_https arriba: B310 ya no aplica.
-        with urllib.request.urlopen(pet, timeout=espera) as r:  # nosec B310
-            codigo = getattr(r, 'status', None) or r.getcode()
-            largo = r.headers.get('Content-Length') or '(sin tamaño)'
-            return f'HTTP {codigo}, Content-Length {largo}'
-    except urllib.error.HTTPError as e:
-        return (f'HTTP {e.code} — GDAL averigua el tamaño con HEAD para '
-                f'saltar al índice del ZIP; si no la contesta, no puede '
-                f'listarlo')
-    except (urllib.error.URLError, TimeoutError, ValueError) as e:
-        return f'no respondió ({e})'
-
-
-def _total_de_rango(cabecera):
-    """Tamaño total que declara un Content-Range «bytes 0-1/985515996»."""
-    m = re.search(r'/(\d+)\s*$', str(cabecera or ''))
-    return int(m.group(1)) if m else 0
 
     def _listar_zip(self, raiz, feedback):
         """(entradas, nota) del ZIP remoto, con respaldo si GDAL no puede.

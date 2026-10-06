@@ -496,3 +496,52 @@ def test_la_ayuda_de_otro_parametro_no_tapa_la_que_falta(copia):
         'una vuelta entera de integracion continua: %r' % detalle)
     assert 'CON' not in detalle, (
         'el parametro que SI lleva ayuda no debe aparecer como faltante')
+
+
+# =====================================================================
+# Un «def» a nivel de modulo en medio de una clase. Paso de verdad:
+# tres ayudantes escritos sin sangria dentro del cuerpo de
+# Sentinel1Hyp3Algorithm dejaron once metodos fuera de la clase,
+# _rect_4326 entre ellos. flake8, bandit, 133 pruebas, las 69
+# comprobaciones de preflight y el smoke test en cuatro versiones de
+# QGIS pasaron todas; el fallo salio al segundo de ejecutar.
+# =====================================================================
+def test_detecta_un_metodo_que_cayo_fuera_de_su_clase(copia):
+    ruta = os.path.join(copia, PAQUETE, 'esri_wayback_algoritmo.py')
+    fuente = open(ruta, encoding='utf-8').read()
+    ancla = '    def _rect_4326(self, parameters, context, feedback):'
+    assert ancla in fuente, 'cambio el metodo de referencia de la prueba'
+    # Un def sin sangria TERMINA el cuerpo de la clase: _rect_4326 y todo
+    # lo que venga despues dejan de ser metodos.
+    roto = fuente.replace(
+        ancla,
+        'def _ayudante_suelto(x):\n'
+        '    """Escrito sin sangria en medio de la clase."""\n'
+        '    return x\n'
+        '\n'
+        '\n' + ancla, 1)
+    open(ruta, 'w', encoding='utf-8').write(roto)
+
+    # Primero: el archivo sigue compilando, que es lo que hace peligroso
+    # a este defecto. Si no compilase lo cazaria py_compile.
+    import ast as _ast
+    _ast.parse(roto)
+
+    _, datos = _correr(copia)
+    assert _dice(datos, 'self._metodo() existe en su clase'), (
+        'preflight tiene que bloquear: el metodo ya no esta en la clase '
+        'y la llamada falla al ejecutar. Bloqueantes: %r'
+        % _bloqueantes(datos))
+
+
+def test_un_atributo_asignado_en_self_no_es_un_huerfano(copia):
+    """self._x = ... define _x; llamarlo no puede dar falso positivo.
+
+    Sin esta distincion la comprobacion marcaria como rotos los
+    atributos que se crean en processAlgorithm, y una comprobacion que
+    grita en codigo sano se acaba ignorando.
+    """
+    _, datos = _correr(copia)
+    assert not _dice(datos, 'self._metodo() existe en su clase'), (
+        'el complemento tal cual no puede dar huerfanos: %r'
+        % _bloqueantes(datos))
