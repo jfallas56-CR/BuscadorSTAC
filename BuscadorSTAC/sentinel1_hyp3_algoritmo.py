@@ -2022,7 +2022,41 @@ cualquier producto derivado.</p>
         else:
             nota_tam = ''
         return (f'{seguro}: HTTP {codigo}, rangos {rangos}, {tamano}, '
-                f'tipo {tipo}. HEAD: {estado_head}.{nota_tam}')
+                f'tipo {tipo}. HEAD: {estado_head}.{nota_tam} '
+                f'{_probar_vsicurl(url)}')
+
+
+def _probar_vsicurl(url):
+    """Si GDAL puede leer los primeros bytes por /vsicurl/, sin el ZIP.
+
+    Todo lo demás de este diagnóstico lo pregunta urllib, que NO es el
+    cliente que falla: GDAL trae su propio curl, con su propio almacén de
+    certificados y su propia configuración de proxy. Que urllib reciba un
+    206 impecable no demuestra que el curl de GDAL pueda hacer la misma
+    petición —menos aún en Windows, donde los certificados y el proxy se
+    configuran por separado—. Preguntárselo al cliente que importa separa
+    «GDAL no llega al archivo» de «GDAL llega y no sabe leer el índice»,
+    que son dos averías distintas y hasta ahora se confundían.
+    """
+    try:
+        fh = gdal.VSIFOpenL('/vsicurl/' + url, 'rb')
+    except RuntimeError as e:
+        return f'GDAL por /vsicurl/: excepción ({e}).'
+    if fh is None:
+        return (f'GDAL NO pudo abrir la URL por /vsicurl/ '
+                f'({gdal.GetLastErrorMsg() or "sin mensaje"}): la avería '
+                f'está en la capa HTTP de GDAL —certificados o proxy—, no '
+                f'en el ZIP. urllib sí llega, así que no es la red.')
+    try:
+        cabeza = gdal.VSIFReadL(1, 4, fh) or b''
+    finally:
+        gdal.VSIFCloseL(fh)
+    if cabeza[:2] == b'PK':
+        return ('GDAL sí lee los primeros bytes por /vsicurl/ y empiezan '
+                'por PK, de modo que llega al archivo: la avería está en '
+                'la lectura del índice, no en el acceso.')
+    return (f'GDAL leyó por /vsicurl/, pero los primeros bytes no son los '
+            f'de un ZIP: {cabeza!r}.')
 
 
 def _estado_head(url, espera):
