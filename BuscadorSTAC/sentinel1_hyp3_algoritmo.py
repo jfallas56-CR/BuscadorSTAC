@@ -612,6 +612,9 @@ class Sentinel1Hyp3Algorithm(QgsProcessingAlgorithm):
         super().__init__()
         # Amplitudes a cargar en postProcessAlgorithm, en el hilo principal.
         self._pendientes = []
+        # Se enciende si el servidor obliga a averiguar el tamaño por
+        # rangos en vez de con HEAD. Ver _listar_zip.
+        self._sin_head = False
 
     # ------------------------------------------------------------ identidad
     def tr(self, cadena):
@@ -1920,7 +1923,7 @@ cualquier producto derivado.</p>
                 if os.path.exists(destino):
                     salida[pol].append((destino, mes, fecha))
                     continue
-                fuente, motivo = self._ruta_banda(archivos, pol)
+                fuente, motivo = self._ruta_banda(archivos, pol, feedback)
                 if not fuente:
                     feedback.pushWarning(
                         f"[!] {granulo[:32]}… {pol}: {motivo} Se omite esta "
@@ -2000,12 +2003,100 @@ cualquier producto derivado.</p>
                     f'las peticiones de rango (Accept-Ranges: {rangos}). '
                     f'GDAL necesita rangos para leer el índice de un ZIP sin '
                     f'bajárselo entero, así que no puede listarlo.')
-        return (f'{seguro}: HTTP {codigo}, rangos {rangos}, {tamano}, '
-                f'tipo {tipo}. El ZIP responde, así que el índice debería '
-                f'poder leerse; puede ser un ZIP mayor de 4 GiB con un '
-                f'índice que este GDAL no interpreta.')
 
-    def _ruta_banda(self, archivos, pol):
+        # HEAD aparte. Es la petición con la que GDAL averigua el tamaño
+        # para saltar al índice, que está al final del ZIP; un servidor
+        # puede contestar GET por rangos de maravilla y no contestar HEAD.
+        # Sin probarla por separado, el diagnóstico decía «el ZIP responde,
+        # así que el índice debería poder leerse» y se quedaba sin
+        # explicación.
+        estado_head = _estado_head(url, espera)
+        total = _total_de_rango(tamano)
+        if total and total >= 4 * 1024 ** 3:
+            nota_tam = (f' Mide {total / 1024 ** 3:.2f} GiB, por encima de '
+                        f'4 GiB, así que su índice es ZIP64.')
+        elif total:
+            nota_tam = (f' Mide {total / 1024 ** 3:.2f} GiB, por debajo de '
+                        f'4 GiB: el índice NO es ZIP64 y eso queda '
+                        f'descartado.')
+        else:
+            nota_tam = ''
+        return (f'{seguro}: HTTP {codigo}, rangos {rangos}, {tamano}, '
+                f'tipo {tipo}. HEAD: {estado_head}.{nota_tam}')
+
+
+def _estado_head(url, espera):
+    """Qué contesta el servidor a una petición HEAD, en una línea."""
+    try:
+        pet = urllib.request.Request(_url_https(url), method='HEAD')
+        # Esquema validado por _url_https arriba: B310 ya no aplica.
+        with urllib.request.urlopen(pet, timeout=espera) as r:  # nosec B310
+            codigo = getattr(r, 'status', None) or r.getcode()
+            largo = r.headers.get('Content-Length') or '(sin tamaño)'
+            return f'HTTP {codigo}, Content-Length {largo}'
+    except urllib.error.HTTPError as e:
+        return (f'HTTP {e.code} — GDAL averigua el tamaño con HEAD para '
+                f'saltar al índice del ZIP; si no la contesta, no puede '
+                f'listarlo')
+    except (urllib.error.URLError, TimeoutError, ValueError) as e:
+        return f'no respondió ({e})'
+
+
+def _total_de_rango(cabecera):
+    """Tamaño total que declara un Content-Range «bytes 0-1/985515996»."""
+    m = re.search(r'/(\d+)\s*$', str(cabecera or ''))
+    return int(m.group(1)) if m else 0
+
+    def _listar_zip(self, raiz, feedback):
+        """(entradas, nota) del ZIP remoto, con respaldo si GDAL no puede.
+
+        El índice de un ZIP está al FINAL del archivo, así que para leerlo
+        sin bajarse el archivo entero GDAL necesita saber cuánto mide, y
+        por omisión lo averigua con una petición HEAD. Hay servidores y
+        redes de distribución que no contestan HEAD como él espera:
+        entonces no sabe el tamaño, no puede saltar al final, y
+        VSIReadDirRecursive devuelve una lista vacía SIN error, que es
+        indistinguible de «el archivo está vacío».
+
+        CPL_VSIL_CURL_USE_HEAD=NO le dice que averigüe el tamaño con un GET
+        por rangos, que es justo lo que estos servidores sí contestan —el
+        diagnóstico de esta misma clase lo confirmó: HTTP 206, rangos
+        aceptados, tipo application/zip y 0.92 GiB de tamaño declarado—.
+
+        Hay que limpiar la caché de /vsicurl entre intentos: GDAL recuerda
+        lo que averiguó del archivo, y sin limpiarla el segundo intento
+        reutiliza el estado fallido del primero y vuelve a salir vacío.
+        """
+        if not self._sin_head:
+            entradas = gdal.ReadDirRecursive(raiz)
+            if entradas:
+                return entradas, ''
+            fallo = gdal.GetLastErrorMsg() or ''
+            gdal.VSICurlClearCache()
+            anterior = gdal.GetConfigOption('CPL_VSIL_CURL_USE_HEAD', None)
+            try:
+                gdal.SetConfigOption('CPL_VSIL_CURL_USE_HEAD', 'NO')
+                entradas = gdal.ReadDirRecursive(raiz)
+            finally:
+                if not entradas:
+                    gdal.SetConfigOption('CPL_VSIL_CURL_USE_HEAD', anterior)
+            if entradas:
+                # Se deja puesto para el resto del lote: si hizo falta en
+                # un producto, hará falta en los 30 restantes, y repetir
+                # el intento fallido en cada uno cuesta una petición.
+                self._sin_head = True
+                feedback.pushInfo(
+                    "  El servidor no responde a HEAD como GDAL espera; se "
+                    "pasa a averiguar el tamaño por rangos "
+                    "(CPL_VSIL_CURL_USE_HEAD=NO) para el resto del lote.")
+                return entradas, 'sin-head'
+            return [], fallo or gdal.GetLastErrorMsg() or ''
+
+        entradas = gdal.ReadDirRecursive(raiz)
+        return (entradas or []), ('' if entradas
+                                  else (gdal.GetLastErrorMsg() or ''))
+
+    def _ruta_banda(self, archivos, pol, feedback):
         """(ruta VSI, None) o (None, motivo) de esa polarización.
 
         Devuelve el MOTIVO en vez de informarlo por su cuenta. Antes
@@ -2038,7 +2129,7 @@ cualquier producto derivado.</p>
                 return None, f'URL de producto rechazada: {e}'
             raiz = self._vsi_zip(url)
             try:
-                dentro = gdal.ReadDirRecursive(raiz)
+                dentro, _nota = self._listar_zip(raiz, feedback)
             except RuntimeError as e:
                 # El mensaje de GDAL repite la URL, y la cadena de consulta
                 # de una URL prefirmada es la credencial.

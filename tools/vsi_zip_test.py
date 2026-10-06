@@ -129,6 +129,23 @@ def _tiene_zip64(ruta):
             and struct.pack('<I', 0x07064b50) in crudo)
 
 
+def _zip_grande(tif, destino, mib=8):
+    """ZIP de varios MiB, con relleno incompresible.
+
+    El primer ZIP de esta prueba medía 253 bytes, de modo que entraba
+    entero en la primera lectura de GDAL y el indice quedaba a mano sin
+    saltar a ningun sitio. Esa prueba pasaba sin ejercitar lo unico que
+    importa en un ZIP remoto: que para leer el indice --que esta al
+    FINAL-- GDAL tiene que averiguar el tamaño del archivo y saltar
+    hasta alli. El producto real mide 0.92 GiB; con 8 MiB ya no cabe en
+    la primera lectura y el salto se ejercita de verdad.
+    """
+    with zipfile.ZipFile(destino, 'w', zipfile.ZIP_STORED) as z:
+        z.writestr(f'{_BASE}/relleno.bin', os.urandom(mib * 1024 * 1024))
+        z.writestr(f'{_BASE}/{_BASE}_VH.tif', open(tif, 'rb').read())
+    return destino
+
+
 class _ServidorConRangos:
     """Sirve UN archivo admitiendo Range, que es lo que /vsicurl/ exige.
 
@@ -136,10 +153,17 @@ class _ServidorConRangos:
     cuerpo entero. Montar la prueba sobre el servidor de serie mediria
     otra cosa --y daria por bueno justo el caso que falla en produccion
     si el servidor remoto ignorase los rangos.
+
+    `sin_head=True` rechaza las peticiones HEAD con 405, imitando al
+    servidor que no las contesta como GDAL espera. Es el caso que se
+    sospecha en produccion: GET por rangos impecable --206, Accept-Ranges,
+    application/zip-- y aun asi un listado vacio, porque el tamaño se
+    averigua con HEAD.
     """
 
-    def __init__(self, ruta):
+    def __init__(self, ruta, sin_head=False):
         datos = open(ruta, 'rb').read()
+        rechazar_head = sin_head
 
         class Manejador(http.server.BaseHTTPRequestHandler):
             protocol_version = 'HTTP/1.1'
@@ -157,6 +181,11 @@ class _ServidorConRangos:
                 self.end_headers()
 
             def do_HEAD(self):
+                if rechazar_head:
+                    self.send_response(405)
+                    self.send_header('Content-Length', '0')
+                    self.end_headers()
+                    return
                 self._cabeceras(len(datos))
 
             def do_GET(self):
@@ -266,6 +295,48 @@ def main():
         ent, err = _listar('/vsizip/{/vsicurl/' + url_firmada + '}')
         comp('y tambien con cadena de consulta tipo URL prefirmada',
              _hay_vh(ent), f'entradas={ent} {err}')
+    finally:
+        srv.cerrar()
+
+    seccion('ZIP remoto de varios MiB: el indice ya no cabe en la 1a lectura')
+    grande = _zip_grande(tif, os.path.join(tmp, 'grande.zip'))
+    print(f'        tamaño: {os.path.getsize(grande) / 1048576:.1f} MiB')
+    srv = _ServidorConRangos(grande)
+    try:
+        gdal.VSICurlClearCache()
+        ent, err = _listar(
+            '/vsizip/{/vsicurl/' + f'http://127.0.0.1:{srv.puerto}/g.zip}}')
+        comp('GDAL salta al final del archivo y lee el indice',
+             _hay_vh(ent), f'entradas={len(ent)} {err}')
+    finally:
+        srv.cerrar()
+
+    seccion('Servidor que NO contesta HEAD (el caso sospechoso)')
+    srv = _ServidorConRangos(grande, sin_head=True)
+    try:
+        gdal.VSICurlClearCache()
+        ent, _err = _listar(
+            '/vsizip/{/vsicurl/' + f'http://127.0.0.1:{srv.puerto}/g.zip}}')
+        sin_respaldo = _hay_vh(ent)
+        print(f'        sin respaldo: '
+              f'{"lista" if sin_respaldo else "NO lista"} el contenido')
+
+        # El respaldo que aplica el complemento.
+        gdal.VSICurlClearCache()
+        previo = gdal.GetConfigOption('CPL_VSIL_CURL_USE_HEAD', None)
+        try:
+            gdal.SetConfigOption('CPL_VSIL_CURL_USE_HEAD', 'NO')
+            ent2, err2 = _listar(
+                '/vsizip/{/vsicurl/'
+                + f'http://127.0.0.1:{srv.puerto}/g.zip}}')
+        finally:
+            gdal.SetConfigOption('CPL_VSIL_CURL_USE_HEAD', previo)
+        comp('con CPL_VSIL_CURL_USE_HEAD=NO si se lista', _hay_vh(ent2),
+             f'es el respaldo que aplica el complemento; si tampoco lista, '
+             f'la causa es otra. entradas={len(ent2)} {err2}')
+        if sin_respaldo:
+            print('        NOTA: este GDAL lista igual sin el respaldo, de '
+                  'modo que aqui no se reproduce el fallo de produccion.')
     finally:
         srv.cerrar()
 
