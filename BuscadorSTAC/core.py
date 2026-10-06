@@ -619,6 +619,41 @@ def _codigo_meses(meses):
     return '.'.join(f"{m:02d}" for m in unicos)
 
 
+def ordenar_trazas(candidatas):
+    """(ordenadas, empatadas) de las trazas aptas para una diferencia estacional.
+
+    Cada candidata es un dict con 'direccion', 'traza', 'n', 'seca',
+    'lluvia' y 'creditos'.
+
+    Se ordena por la estación MÁS DÉBIL, que es la que limita una
+    diferencia de medianas, y el desempate es explícito y numérico: más
+    gránulos, menos créditos y número de traza. Antes se ordenaba una
+    tupla que empezaba por la estación débil, de modo que a igualdad de
+    estación lo decidía el elemento siguiente, el NOMBRE de la dirección:
+    «descending» va después de «ascending» y con reverse=True salía
+    primero. La primera de la lista se presenta como «siguiente paso»,
+    así que el alfabeto acababa recomendando dónde gastar créditos.
+
+    `empatadas` son las que coinciden con la primera en lo que de verdad
+    decide —estación débil, número de gránulos y coste—. Entre ellas el
+    inventario no distingue, y conviene decirlo antes de gastar: la
+    elección real es de geometría de mirada, que estos datos no contienen.
+    """
+    filas = sorted(
+        candidatas,
+        key=lambda c: (-min(int(c['seca']), int(c['lluvia'])),
+                       -int(c['n']), int(c['creditos']), int(c['traza'])))
+    if not filas:
+        return [], []
+
+    def _clave(c):
+        return (min(int(c['seca']), int(c['lluvia'])),
+                int(c['n']), int(c['creditos']))
+
+    primera = _clave(filas[0])
+    return filas, [c for c in filas if _clave(c) == primera]
+
+
 def sin_firma_url(url):
     """URL sin su cadena de consulta, apta para el registro.
 

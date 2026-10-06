@@ -786,3 +786,85 @@ def test_no_deja_pasar_la_firma_cuando_hay_varios_signos():
     salida = core.sin_firma_url(url)
     assert 'secreto' not in salida
     assert salida == 'https://h/x.zip?<firma oculta>'
+
+
+# =====================================================================
+# ordenar_trazas. El caso real: dos trazas idénticas en todo, y el
+# algoritmo presentaba una como «siguiente paso» porque «descending» va
+# después de «ascending» en el alfabeto. Son 1860 créditos.
+# =====================================================================
+def _traza(direccion, traza, n, seca, lluvia, creditos=1860):
+    return {'direccion': direccion, 'traza': traza, 'n': n,
+            'seca': seca, 'lluvia': lluvia, 'creditos': creditos}
+
+
+def test_detecta_el_empate_entre_dos_trazas_identicas():
+    """El caso del registro: 165 ascending y 157 descending, iguales."""
+    filas, empatadas = core.ordenar_trazas([
+        _traza('ascending', 165, 31, 13, 18),
+        _traza('descending', 157, 31, 13, 18)])
+    assert len(filas) == 2
+    assert len(empatadas) == 2, (
+        'ofrecen lo mismo: hay que decir que empatan en vez de recomendar '
+        'una')
+
+
+def test_el_desempate_no_lo_decide_el_nombre_de_la_direccion():
+    """El desempate es por número de traza, no por alfabeto.
+
+    Hay que elegir los valores con cuidado: en el caso del registro
+    —ascending 165 contra descending 157— la ordenación vieja y la nueva
+    dan las DOS la traza 157, una por alfabeto y la otra por número, así
+    que ese caso no distingue nada y no sirve de prueba.
+
+    Con la ascendente de número MENOR el resultado se separa: la vieja
+    ordenaba la tupla (débil, dirección, …) con reverse=True, de modo
+    que «descending» ganaba y devolvía la 200; la nueva devuelve la 100.
+    """
+    a = _traza('ascending', 100, 31, 13, 18)
+    d = _traza('descending', 200, 31, 13, 18)
+    filas, empatadas = core.ordenar_trazas([a, d])
+    assert filas[0]['traza'] == 100, (
+        'a igualdad manda el número de traza; si sale la 200 es que el '
+        'nombre de la dirección sigue decidiendo')
+    assert len(empatadas) == 2, 'y siguen siendo un empate'
+    # Y el orden de entrada tampoco decide.
+    assert core.ordenar_trazas([d, a])[0][0]['traza'] == 100
+
+
+def test_gana_la_estacion_mas_debil_mas_alta():
+    filas, empatadas = core.ordenar_trazas([
+        _traza('ascending', 1, 30, 5, 25),      # débil = 5
+        _traza('descending', 2, 30, 14, 16)])   # débil = 14
+    assert filas[0]['traza'] == 2
+    assert len(empatadas) == 1, 'no empatan: una es claramente mejor'
+
+
+def test_a_igual_estacion_debil_gana_la_de_mas_granulos():
+    filas, _ = core.ordenar_trazas([
+        _traza('ascending', 1, 26, 13, 13),
+        _traza('descending', 2, 31, 13, 18)])
+    assert filas[0]['traza'] == 2
+    assert filas[0]['n'] == 31
+
+
+def test_a_igual_estacion_y_granulos_gana_la_mas_barata():
+    filas, empatadas = core.ordenar_trazas([
+        _traza('ascending', 1, 31, 13, 18, creditos=1860),
+        _traza('descending', 2, 31, 13, 18, creditos=155)])
+    assert filas[0]['creditos'] == 155
+    assert len(empatadas) == 1, 'el coste las distingue, no empatan'
+
+
+def test_ordenar_trazas_con_lista_vacia():
+    assert core.ordenar_trazas([]) == ([], [])
+
+
+def test_tres_empatadas_se_reportan_las_tres():
+    filas, empatadas = core.ordenar_trazas([
+        _traza('ascending', 10, 31, 13, 18),
+        _traza('descending', 20, 31, 13, 18),
+        _traza('ascending', 30, 31, 13, 18),
+        _traza('descending', 40, 20, 4, 16)])
+    assert len(filas) == 4
+    assert [c['traza'] for c in empatadas] == [10, 20, 30]

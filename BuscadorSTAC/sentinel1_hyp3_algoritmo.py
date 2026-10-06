@@ -103,7 +103,7 @@ from osgeo import gdal
 from .buscar_sentinel2_algoritmo import (
     AUTOR, AUTOR_EMAIL, RealcePostProcessor, _TIPO_POLIGONO, _cargar_pendientes,
     _enum_qgis, _registrar_postproc)
-from .core import sin_firma_url, sin_prefijo_bearer
+from .core import ordenar_trazas, sin_firma_url, sin_prefijo_bearer
 
 _LOG = logging.getLogger('BuscadorSTAC')
 
@@ -1297,8 +1297,9 @@ cualquier producto derivado.</p>
             feedback.pushInfo(
                 f"{direccion:<12}{str(tz):>7}{len(lote):>10}{seca:>7}"
                 f"{lluvia:>7}{cred:>10}   {', '.join(pols)}")
-            aptas.append((min(seca, lluvia), direccion, tz, len(lote),
-                          seca, lluvia, cred))
+            aptas.append({'direccion': direccion, 'traza': tz,
+                          'n': len(lote), 'seca': seca, 'lluvia': lluvia,
+                          'creditos': cred})
         feedback.pushInfo('-' * 78)
 
         if not aptas:
@@ -1307,27 +1308,64 @@ cualquier producto derivado.</p>
                 f"Ponga «Traza» en 0 para ver las que sí.")
             return
 
-        aptas.sort(reverse=True)
+        aptas, empatadas = ordenar_trazas(aptas)
         feedback.pushInfo(
             f"\nAsignación gratuita de HyP3 Basic: {CREDITOS_LIBRES_MES} "
             f"créditos por mes.")
         feedback.pushInfo(
             "\nOrdenadas por la estación MÁS DÉBIL, que es la que limita una "
             "diferencia de medianas:")
-        for peor, direccion, tz, n, seca, lluvia, cred in aptas[:6]:
+        for c in aptas[:6]:
+            peor = min(c['seca'], c['lluvia'])
             feedback.pushInfo(
-                f"  traza {tz} {direccion:<11} {n:>3} gránulos  "
-                f"{seca:>2} seca / {lluvia:>2} lluvia  → {cred} créditos "
-                f"a {res_m} m  (estación más débil: {peor})")
+                f"  traza {c['traza']} {c['direccion']:<11} {c['n']:>3} "
+                f"gránulos  {c['seca']:>2} seca / {c['lluvia']:>2} lluvia  → "
+                f"{c['creditos']} créditos a {res_m} m  (estación más débil: "
+                f"{peor})")
 
         mejor = aptas[0]
-        feedback.pushInfo(
-            f"\nSiguiente paso: ponga «Traza» = {mejor[2]}, «Dirección de "
-            f"órbita» = {mejor[1]}, marque la confirmación de gasto y "
-            f"ejecute el modo de pedido. Costaría {mejor[6]} créditos.")
-        if mejor[0] < 3:
+        # El empate se dice. Entre trazas que ofrecen lo mismo, el orden de
+        # la lista no las distingue, y la primera se presenta como
+        # «siguiente paso»: callarlo hace pasar por recomendación lo que es
+        # un desempate mecánico, y aquí se gastan créditos de verdad.
+        if len(empatadas) > 1:
+            lista = ', '.join(f"traza {a['traza']} {a['direccion']}"
+                              for a in empatadas)
+            juntas = sum(a['creditos'] for a in empatadas)
+            feedback.pushInfo(
+                f"\nEMPATE entre {len(empatadas)}: {lista}. Mismo número de "
+                f"gránulos, mismo reparto estacional y mismo coste, así que "
+                f"el orden de la lista NO las distingue.")
+            feedback.pushInfo(
+                "  Decídalo por geometría de mirada, que el inventario no "
+                "puede juzgar. Sentinel-1 mira a la derecha del sentido de "
+                "vuelo: una traza ascendente ilumina las laderas orientadas "
+                "al oeste, y una descendente las orientadas al este. "
+                "Prefiera la que ilumine la orientación dominante de su "
+                "área. La corrección radiométrica del terreno atenúa el "
+                "efecto, pero no recupera un píxel en sombra ni en solape. "
+                "En terreno llano da igual.")
+            if juntas <= CREDITOS_LIBRES_MES:
+                feedback.pushInfo(
+                    f"  Las {len(empatadas)} juntas caben en la asignación "
+                    f"del mes: {juntas} de {CREDITOS_LIBRES_MES} créditos. "
+                    f"Si la orientación dominante no está clara, pedir las "
+                    f"dos y comparar cuesta menos que acertar por sorteo.")
+            feedback.pushInfo(
+                f"\nSiguiente paso: elija una de las empatadas, póngala en "
+                f"«Traza» y «Dirección de órbita», marque la confirmación de "
+                f"gasto y ejecute el modo de pedido. Cualquiera costaría "
+                f"{mejor['creditos']} créditos.")
+        else:
+            feedback.pushInfo(
+                f"\nSiguiente paso: ponga «Traza» = {mejor['traza']}, "
+                f"«Dirección de órbita» = {mejor['direccion']}, marque la "
+                f"confirmación de gasto y ejecute el modo de pedido. "
+                f"Costaría {mejor['creditos']} créditos.")
+        peor_mejor = min(mejor['seca'], mejor['lluvia'])
+        if peor_mejor < 3:
             feedback.pushWarning(
-                f"[!] Incluso la mejor traza llega solo a {mejor[0]} "
+                f"[!] Incluso la mejor traza llega solo a {peor_mejor} "
                 f"adquisición(es) en su estación más débil. Una mediana "
                 f"estacional sobre tan poco no es defendible: pruebe otro año "
                 f"antes de gastar créditos.")
