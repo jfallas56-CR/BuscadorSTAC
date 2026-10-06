@@ -201,6 +201,12 @@ jobs:
           python3 tools/vsi_zip_test.py > /tmp/vsi.txt 2>&1
           codigo=$?
           cat /tmp/vsi.txt
+          # Esta linea se emite PASE O FALLE: dice si el servidor sin HEAD
+          # llega a reproducir el fallo de produccion. Sin ella no se
+          # distingue «el respaldo arregla el fallo» de «este GDAL no
+          # falla y el respaldo no se ha probado contra nada».
+          grep -E 'sin respaldo:|NOTA:' /tmp/vsi.txt \
+            | sed -e 's/^[[:space:]]*//' -e 's/^/::notice::/' || true
           if [ "${codigo:-1}" -ne 0 ]; then
             grep -A3 -E '^  FALLA' /tmp/vsi.txt \
               | grep -vE '^--$|^[[:space:]]*$' | head -30 \
