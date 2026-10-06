@@ -868,3 +868,47 @@ def test_tres_empatadas_se_reportan_las_tres():
         _traza('descending', 40, 20, 4, 16)])
     assert len(filas) == 4
     assert [c['traza'] for c in empatadas] == [10, 20, 30]
+
+
+# =====================================================================
+# opciones_asequibles. El caso real: HyP3 rechazó un lote de 1860
+# créditos con un HTTP 400 porque quedaban 1630, después de que el
+# inventario lo hubiera recomendado dando la asignación mensual (8000)
+# por saldo.
+# =====================================================================
+def test_los_precios_rtc_son_los_publicados_por_asf():
+    """5, 15 y 60 créditos a 30, 20 y 10 m. De esto depende el gasto."""
+    assert core.CREDITOS_RTC == {30: 5, 20: 15, 10: 60}
+
+
+def test_con_1630_creditos_no_cabe_10m_pero_si_20m():
+    """El caso del registro: 31 gránulos, saldo de 1630."""
+    opciones = core.opciones_asequibles(31, 1630)
+    assert [e for e, _c in opciones] == [20, 30], (
+        f'31 x 60 = 1860 no cabe en 1630; 20 y 30 m si: {opciones}')
+    assert dict(opciones) == {20: 465, 30: 155}
+
+
+def test_con_saldo_de_sobra_caben_las_tres():
+    opciones = core.opciones_asequibles(31, 8000)
+    assert sorted(e for e, _c in opciones) == [10, 20, 30]
+    assert dict(opciones)[10] == 1860
+
+
+def test_sin_saldo_para_nada_devuelve_lista_vacia():
+    assert core.opciones_asequibles(31, 100) == []
+
+
+def test_el_limite_es_inclusivo():
+    """Un pedido que cuesta exactamente el saldo SI cabe.
+
+    HyP3 rechaza cuando el costo EXCEDE el saldo, no cuando lo iguala;
+    dejar fuera el caso exacto esconderia una opcion valida.
+    """
+    assert (30, 155) in core.opciones_asequibles(31, 155)
+    assert core.opciones_asequibles(31, 154) == []
+
+
+def test_saldo_desconocido_no_inventa_opciones():
+    """Sin saldo legible no se puede afirmar que algo quepa."""
+    assert core.opciones_asequibles(31, None) == []

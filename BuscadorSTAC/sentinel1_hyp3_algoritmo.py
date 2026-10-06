@@ -103,7 +103,9 @@ from osgeo import gdal
 from .buscar_sentinel2_algoritmo import (
     AUTOR, AUTOR_EMAIL, RealcePostProcessor, _TIPO_POLIGONO, _cargar_pendientes,
     _enum_qgis, _registrar_postproc)
-from .core import ordenar_trazas, sin_firma_url, sin_prefijo_bearer
+from .core import (CREDITOS_RTC, opciones_asequibles,
+                   ordenar_trazas, sin_firma_url,
+                   sin_prefijo_bearer)
 
 _LOG = logging.getLogger('BuscadorSTAC')
 
@@ -131,10 +133,9 @@ API_HYP3 = 'https://hyp3-api.asf.alaska.edu'
 # porque un resultado truncado en silencio falsearía el inventario.
 TOPE_RESULTADOS = 1000
 
-# Costo en créditos de un trabajo RTC según espaciamiento de píxel, y
-# asignación mensual gratuita de HyP3 Basic.
+# CREDITOS_RTC vive en core.py, donde se prueba sin QGIS.
+# Asignación mensual gratuita de HyP3 Basic.
 # Fuente: https://hyp3-docs.asf.alaska.edu/using/credits/
-CREDITOS_RTC = {30: 5, 20: 15, 10: 60}
 CREDITOS_LIBRES_MES = 8000
 
 # HyP3 acepta hasta 200 definiciones de trabajo por peticion.
@@ -211,6 +212,41 @@ def _url_https(url):
     if esquema != 'https':
         raise ValueError(f"Esquema no permitido: '{esquema or '(vacío)'}'")
     return url
+
+
+def _saldo_creditos(token, feedback):
+    """(disponibles, por_mes) del endpoint /user de HyP3, o (None, None).
+
+    La asignación mensual es un número fijo; el SALDO es el que decide si
+    un pedido entra. Darlos por lo mismo hizo que el inventario
+    recomendara gastar 1860 créditos a quien le quedaban 1630, y el
+    rechazo llegara del servidor como un HTTP 400 después de haber
+    elegido traza y haber marcado la confirmación de gasto.
+
+    Si no se puede leer, se devuelve (None, None) y quien llama sigue con
+    la asignación como referencia: no saber el saldo no es motivo para
+    impedir un pedido que el servidor puede aceptar.
+    """
+    try:
+        datos = _peticion(API_HYP3.rstrip('/') + '/user', token=token,
+                          reintentos=1)
+    except RuntimeError as e:
+        feedback.pushWarning(
+            f"[!] No se pudo leer el saldo de créditos: "
+            f"{_sin_secreto(e, token)}. Se sigue con la asignación mensual "
+            f"como referencia, así que el servidor podría rechazar el "
+            f"pedido por saldo.")
+        return None, None
+    if not isinstance(datos, dict):
+        return None, None
+    saldo = datos.get('remaining_credits')
+    por_mes = datos.get('credits_per_month')
+    try:
+        saldo = None if saldo is None else float(saldo)
+        por_mes = None if por_mes is None else float(por_mes)
+    except (TypeError, ValueError):
+        return None, None
+    return saldo, por_mes
 
 
 def _sin_secreto(texto, token):
@@ -1178,7 +1214,8 @@ cualquier producto derivado.</p>
             f"AOI: {bbox[0]:.5f}, {bbox[1]:.5f} … {bbox[2]:.5f}, {bbox[3]:.5f}")
 
         if modo == 0:
-            self._inventario(bbox, anio, traza, orbita, res_m, feedback)
+            self._inventario(bbox, anio, traza, orbita, res_m, feedback,
+                             token=token)
             return {self.SALIDA: carpeta or ''}
 
         if modo == 1:
@@ -1250,7 +1287,11 @@ cualquier producto derivado.</p>
                         (ident, props))
         return grupos
 
-    def _inventario(self, bbox, anio, traza, orbita, res_m, feedback):
+    def _inventario(self, bbox, anio, traza, orbita, res_m, feedback,
+                    token=None):
+        # token=None y no token='': Bandit marca B107 por el NOMBRE del
+        # parámetro en cuanto el valor por omisión es una cadena, y el
+        # escáner del portal reporta también las de severidad baja.
         feedback.pushInfo(
             f"\nInventario Sentinel-1 GRD-HD · {anio} · archivo de ASF")
         feedback.pushInfo(
@@ -1309,9 +1350,27 @@ cualquier producto derivado.</p>
             return
 
         aptas, empatadas = ordenar_trazas(aptas)
-        feedback.pushInfo(
-            f"\nAsignación gratuita de HyP3 Basic: {CREDITOS_LIBRES_MES} "
-            f"créditos por mes.")
+
+        # El SALDO, no la asignación. Darlos por lo mismo hacía que el
+        # inventario recomendara un pedido de 1860 créditos a quien le
+        # quedaban 1630: lo que se gasta sale del saldo, y la asignación
+        # mensual solo dice cuánto se repone. Sin token no se puede
+        # consultar, y entonces se dice que es una referencia y no un
+        # saldo, en vez de dar a entender que hay 8000 disponibles.
+        saldo, por_mes = (_saldo_creditos(token, feedback) if token
+                          else (None, None))
+        presupuesto = saldo
+        if saldo is not None:
+            feedback.pushInfo(
+                f"\nSaldo en HyP3: {saldo:.0f} créditos"
+                + (f" de {por_mes:.0f} al mes." if por_mes else "."))
+        else:
+            feedback.pushInfo(
+                f"\nAsignación gratuita de HyP3 Basic: "
+                f"{CREDITOS_LIBRES_MES} créditos por mes. Es la asignación, "
+                f"NO su saldo: indique la configuración de autenticación "
+                f"para que se consulte cuánto le queda de verdad antes de "
+                f"elegir espaciamiento.")
         feedback.pushInfo(
             "\nOrdenadas por la estación MÁS DÉBIL, que es la que limita una "
             "diferencia de medianas:")
@@ -1324,6 +1383,30 @@ cualquier producto derivado.</p>
                 f"{peor})")
 
         mejor = aptas[0]
+
+        # Si no alcanza, decirlo AQUÍ y decir para qué sí alcanza. El
+        # precio por escena no es lineal —5, 15 y 60 créditos a 30, 20 y
+        # 10 m— así que la alternativa no es evidente de cabeza, y el
+        # usuario se enteraba al recibir un HTTP 400 del servidor después
+        # de elegir traza y marcar la confirmación de gasto.
+        if presupuesto is not None and mejor['creditos'] > presupuesto:
+            opciones = opciones_asequibles(mejor['n'], presupuesto)
+            if opciones:
+                alternativas = '; '.join(f'{esp} m = {cst} créditos'
+                                         for esp, cst in opciones)
+                feedback.pushWarning(
+                    f"[!] A {res_m} m NO le alcanza: {mejor['creditos']} "
+                    f"créditos contra {presupuesto:.0f} de saldo. Los mismos "
+                    f"{mejor['n']} gránulos sí caben a: {alternativas}. "
+                    f"Cambie «Espaciamiento de píxel» antes de pedir.")
+            else:
+                feedback.pushWarning(
+                    f"[!] Con {presupuesto:.0f} créditos de saldo no caben "
+                    f"los {mejor['n']} gránulos ni al espaciamiento más "
+                    f"barato ({mejor['n'] * CREDITOS_RTC[30]} créditos a "
+                    f"30 m). Espere la asignación del mes que viene o acorte "
+                    f"el periodo.")
+
         # El empate se dice. Entre trazas que ofrecen lo mismo, el orden de
         # la lista no las distingue, y la primera se presenta como
         # «siguiente paso»: callarlo hace pasar por recomendación lo que es
@@ -1345,12 +1428,15 @@ cualquier producto derivado.</p>
                 "área. La corrección radiométrica del terreno atenúa el "
                 "efecto, pero no recupera un píxel en sombra ni en solape. "
                 "En terreno llano da igual.")
-            if juntas <= CREDITOS_LIBRES_MES:
+            # Solo se ofrece pedir varias si de verdad caben en el SALDO.
+            # Con la asignación mensual se proponía un gasto que el
+            # servidor iba a rechazar.
+            if presupuesto is not None and juntas <= presupuesto:
                 feedback.pushInfo(
-                    f"  Las {len(empatadas)} juntas caben en la asignación "
-                    f"del mes: {juntas} de {CREDITOS_LIBRES_MES} créditos. "
-                    f"Si la orientación dominante no está clara, pedir las "
-                    f"dos y comparar cuesta menos que acertar por sorteo.")
+                    f"  Las {len(empatadas)} juntas caben en su saldo: "
+                    f"{juntas} de {presupuesto:.0f} créditos. Si la "
+                    f"orientación dominante no está clara, pedir las dos y "
+                    f"comparar cuesta menos que acertar por sorteo.")
             feedback.pushInfo(
                 f"\nSiguiente paso: elija una de las empatadas, póngala en "
                 f"«Traza» y «Dirección de órbita», marque la confirmación de "
@@ -1482,6 +1568,34 @@ cualquier producto derivado.</p>
                 f'{tope} que usted fijó. Suba «Tope de créditos por '
                 f'ejecución» si es lo que quiere, o baje el espaciamiento de '
                 f'píxel (30 m cuesta doce veces menos que 10 m).')
+
+        # El saldo, antes de enviar. Es la comprobación que faltaba: el
+        # tope de arriba es el límite que fija el usuario, no lo que le
+        # queda en la cuenta, y HyP3 rechazaba el lote entero con un 400
+        # cuando no alcanzaba.
+        saldo, por_mes = _saldo_creditos(token, feedback)
+        if saldo is not None:
+            referencia = (f' de {por_mes:.0f} al mes' if por_mes
+                          else f' (asignación: {CREDITOS_LIBRES_MES}/mes)')
+            feedback.pushInfo(
+                f"  Saldo en HyP3: {saldo:.0f} créditos{referencia}")
+        if saldo is not None and costo > saldo:
+            opciones = opciones_asequibles(len(utiles), saldo)
+            if opciones:
+                alternativas = '; '.join(
+                    f'{esp} m = {cst} créditos' for esp, cst in opciones)
+                salida = (f'Con ese saldo sí caben los mismos '
+                          f'{len(utiles)} gránulos a: {alternativas}.')
+            else:
+                salida = (f'Con ese saldo no caben los {len(utiles)} '
+                          f'gránulos ni al espaciamiento más barato '
+                          f'({len(utiles) * CREDITOS_RTC[30]} créditos a '
+                          f'30 m). Espere la asignación del mes que viene o '
+                          f'reduzca el periodo.')
+            raise QgsProcessingException(
+                f'El pedido costaría {costo} créditos y en HyP3 le quedan '
+                f'{saldo:.0f}: faltan {costo - saldo:.0f}. No se envió nada. '
+                f'{salida}')
         if not n_s or not n_l:
             raise QgsProcessingException(
                 f'La traza {traza} tiene {n_s} gránulo(s) de seca y {n_l} de '

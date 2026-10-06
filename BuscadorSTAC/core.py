@@ -619,6 +619,32 @@ def _codigo_meses(meses):
     return '.'.join(f"{m:02d}" for m in unicos)
 
 
+# Costo en creditos de un trabajo RTC de HyP3 segun espaciamiento de pixel.
+# Fuente: https://hyp3-docs.asf.alaska.edu/using/credits/
+# Vive aqui, y no en el algoritmo, porque de estos numeros depende lo que
+# se gasta y conviene poder probarlos sin QGIS.
+CREDITOS_RTC = {30: 5, 20: 15, 10: 60}
+
+
+def opciones_asequibles(n_granulos, saldo):
+    """[(espaciamiento, costo)] que caben en el saldo, de mas fino a menos.
+
+    Decir «no le alcanza» sin decir para que SI alcanza deja al usuario
+    calculandolo a mano, y el precio por escena no es lineal: 5, 15 y 60
+    creditos a 30, 20 y 10 m. Un saldo de 1630 no cubre 31 granulos a
+    10 m (1860) y si los cubre a 20 m (465), que no es evidente de
+    cabeza.
+    """
+    if saldo is None:
+        return []
+    opciones = []
+    for espaciado in sorted(CREDITOS_RTC):
+        costo = int(n_granulos) * CREDITOS_RTC[espaciado]
+        if costo <= saldo:
+            opciones.append((espaciado, costo))
+    return opciones
+
+
 def ordenar_trazas(candidatas):
     """(ordenadas, empatadas) de las trazas aptas para una diferencia estacional.
 
