@@ -912,3 +912,38 @@ def test_el_limite_es_inclusivo():
 def test_saldo_desconocido_no_inventa_opciones():
     """Sin saldo legible no se puede afirmar que algo quepa."""
     assert core.opciones_asequibles(31, None) == []
+
+
+# =====================================================================
+# lista_con_zip. La causa real del fallo de la recogida: QGIS traía
+# CPL_VSIL_CURL_ALLOWED_EXTENSIONS=.tif,.TIF,.tiff,.jp2, de modo que
+# /vsicurl/ se negaba a abrir los .zip de HyP3 sin pedir nada al
+# servidor y sin dar error. Los COG .tif seguían funcionando, que es
+# por lo que solo fallaba este algoritmo.
+# =====================================================================
+def test_anade_zip_a_la_lista_real_de_qgis():
+    assert core.lista_con_zip('.tif,.TIF,.tiff,.jp2') == \
+        '.tif,.TIF,.tiff,.jp2,.zip'
+
+
+def test_no_toca_nada_si_la_lista_esta_vacia():
+    """Vacía o sin definir ya significa «todo permitido»."""
+    assert core.lista_con_zip(None) is None
+    assert core.lista_con_zip('') is None
+    assert core.lista_con_zip('   ') is None
+
+
+def test_no_duplica_zip_si_ya_estaba():
+    assert core.lista_con_zip('.tif,.zip') is None
+    assert core.lista_con_zip('.ZIP,.tif') is None, 'sin distinguir mayúsculas'
+
+
+def test_conserva_la_restriccion_del_usuario():
+    """Se AÑADE, no se vacía: quitar la lista abriría /vsicurl/ a todo."""
+    salida = core.lista_con_zip('.tif,.jp2')
+    assert salida.startswith('.tif,.jp2'), salida
+    assert salida.endswith(',.zip'), salida
+
+
+def test_tolera_espacios_sueltos():
+    assert core.lista_con_zip(' .tif , .jp2 ') == '.tif,.jp2,.zip'

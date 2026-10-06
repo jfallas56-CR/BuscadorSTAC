@@ -626,6 +626,33 @@ def _codigo_meses(meses):
 CREDITOS_RTC = {30: 5, 20: 15, 10: 60}
 
 
+def lista_con_zip(valor):
+    """La lista blanca de extensiones de /vsicurl/, con «.zip» incluido.
+
+    CPL_VSIL_CURL_ALLOWED_EXTENSIONS limita que extensiones puede abrir
+    /vsicurl/. Con «.tif,.TIF,.tiff,.jp2» puesto --que es lo que trae
+    alguna instalacion de QGIS en Windows-- un .zip sencillamente NO se
+    abre: VSIFOpenL devuelve NULL sin lanzar error, sin hacer ninguna
+    peticion HTTP y sin un solo mensaje de depuracion. De ahi que el
+    fallo fuera mudo, y de ahi que el resto del complemento siguiera
+    funcionando: los COG de Sentinel-2 y Landsat son .tif.
+
+    Se AÑADE .zip en vez de vaciar la lista. La restriccion la puso el
+    usuario o su instalacion, y vaciarla abriria /vsicurl/ a todo lo
+    demas mientras durase la recogida.
+
+    Devuelve None cuando no hay nada que cambiar: lista vacia o sin
+    definir ya significa «todo permitido», y si .zip ya esta, tampoco.
+    """
+    texto = str(valor or '').strip()
+    if not texto:
+        return None
+    partes = [p.strip() for p in texto.split(',') if p.strip()]
+    if any(p.lower() == '.zip' for p in partes):
+        return None
+    return ','.join(partes + ['.zip'])
+
+
 def opciones_asequibles(n_granulos, saldo):
     """[(espaciamiento, costo)] que caben en el saldo, de mas fino a menos.
 

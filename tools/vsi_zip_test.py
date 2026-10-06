@@ -43,6 +43,12 @@ import tempfile
 import threading
 import zipfile
 
+# La RAIZ del repositorio, no la carpeta tools: hace falta para importar
+# BuscadorSTAC.core y probar el arreglo con la MISMA funcion que usa el
+# complemento, en vez de con una copia que podria divergir.
+RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, RAIZ)
+
 fallos = []
 hechas = 0
 
@@ -308,6 +314,45 @@ def main():
             '/vsizip/{/vsicurl/' + f'http://127.0.0.1:{srv.puerto}/g.zip}}')
         comp('GDAL salta al final del archivo y lee el indice',
              _hay_vh(ent), f'entradas={len(ent)} {err}')
+    finally:
+        srv.cerrar()
+
+    seccion('Lista blanca de extensiones de /vsicurl/ (la causa real)')
+    # Reproduce la configuracion encontrada en el QGIS del usuario:
+    # CPL_VSIL_CURL_ALLOWED_EXTENSIONS=.tif,.TIF,.tiff,.jp2. Con eso
+    # /vsicurl/ se niega a abrir un .zip sin pedir nada al servidor y sin
+    # dar error, que es por lo que el fallo era mudo.
+    srv = _ServidorConRangos(grande)
+    try:
+        url_g = f'http://127.0.0.1:{srv.puerto}/g.zip'
+        previo = gdal.GetConfigOption('CPL_VSIL_CURL_ALLOWED_EXTENSIONS',
+                                      None)
+        try:
+            gdal.SetConfigOption('CPL_VSIL_CURL_ALLOWED_EXTENSIONS',
+                                 '.tif,.TIF,.tiff,.jp2')
+            gdal.VSICurlClearCache()
+            fh = gdal.VSIFOpenL('/vsicurl/' + url_g, 'rb')
+            if fh is not None:
+                gdal.VSIFCloseL(fh)
+            comp('con la lista sin .zip, /vsicurl/ NO abre el archivo',
+                 fh is None,
+                 'si lo abre, esta version de GDAL no aplica la lista y '
+                 'esta prueba no reproduce el fallo del usuario')
+            gdal.VSICurlClearCache()
+            ent, err = _listar('/vsizip/{/vsicurl/' + url_g + '}')
+            comp('y el indice sale vacio, que era el sintoma',
+                 not _hay_vh(ent), f'entradas={len(ent)} {err}')
+
+            # Y ahora el arreglo del complemento.
+            from BuscadorSTAC.core import lista_con_zip
+            gdal.SetConfigOption('CPL_VSIL_CURL_ALLOWED_EXTENSIONS',
+                                 lista_con_zip('.tif,.TIF,.tiff,.jp2'))
+            gdal.VSICurlClearCache()
+            ent2, err2 = _listar('/vsizip/{/vsicurl/' + url_g + '}')
+            comp('anadiendo .zip a la lista, el indice se lee',
+                 _hay_vh(ent2), f'entradas={len(ent2)} {err2}')
+        finally:
+            gdal.SetConfigOption('CPL_VSIL_CURL_ALLOWED_EXTENSIONS', previo)
     finally:
         srv.cerrar()
 

@@ -103,9 +103,9 @@ from osgeo import gdal
 from .buscar_sentinel2_algoritmo import (
     AUTOR, AUTOR_EMAIL, RealcePostProcessor, _TIPO_POLIGONO, _cargar_pendientes,
     _enum_qgis, _registrar_postproc)
-from .core import (CREDITOS_RTC, opciones_asequibles,
-                   ordenar_trazas, sin_firma_url,
-                   sin_prefijo_bearer)
+from .core import (CREDITOS_RTC, lista_con_zip,
+                   opciones_asequibles, ordenar_trazas,
+                   sin_firma_url, sin_prefijo_bearer)
 
 _LOG = logging.getLogger('BuscadorSTAC')
 
@@ -1893,6 +1893,28 @@ cualquier producto derivado.</p>
         con la traza que se pidió. Entre dos resoluciones significa que un
         lote a 10 m se queda con los recortes de 30 m.
         """
+        # La lista blanca de /vsicurl/, antes de nada. Si no permite .zip,
+        # GDAL no abre NINGÚN producto —ni para listarlo ni para
+        # recortarlo— y lo hace en silencio, sin petición ni error.
+        clave_ext = 'CPL_VSIL_CURL_ALLOWED_EXTENSIONS'
+        previo_ext = gdal.GetConfigOption(clave_ext, None)
+        nueva_ext = lista_con_zip(previo_ext)
+        if nueva_ext:
+            gdal.SetConfigOption(clave_ext, nueva_ext)
+            feedback.pushInfo(
+                f"  {clave_ext} estaba en «{previo_ext}», que no permite "
+                f"abrir .zip por /vsicurl/. Se añade .zip mientras dure la "
+                f"recogida y se deja como estaba al terminar.")
+        try:
+            return self._descargar_recortes_int(
+                trabajos, pols, bbox, carpeta, feedback, marca)
+        finally:
+            if nueva_ext:
+                gdal.SetConfigOption(clave_ext, previo_ext)
+
+    def _descargar_recortes_int(self, trabajos, pols, bbox, carpeta,
+                                feedback, marca):
+        """El cuerpo de _descargar_recortes, ya con .zip permitido."""
         salida = defaultdict(list)
         total = max(1, len(trabajos) * len(pols))
         hecho = 0
@@ -1964,6 +1986,21 @@ cualquier producto derivado.</p>
         403 aquí lo responde.
         """
         seguro = sin_firma_url(url)
+
+        # Lo primero, porque si es esto no hay nada que diagnosticar por
+        # HTTP: GDAL ni siquiera llega a pedir. Un diagnóstico que empiece
+        # por la red responde «el servidor va bien» y deja el fallo sin
+        # explicar, que es justo lo que pasó.
+        permitidas = gdal.GetConfigOption(
+            'CPL_VSIL_CURL_ALLOWED_EXTENSIONS', None)
+        if lista_con_zip(permitidas):
+            return (f'{seguro}: CPL_VSIL_CURL_ALLOWED_EXTENSIONS está en '
+                    f'«{permitidas}» y no incluye .zip, de modo que '
+                    f'/vsicurl/ se niega a abrirlo SIN pedir nada al '
+                    f'servidor y sin dar error. Es una opción de GDAL que '
+                    f'se configura en QGIS: Configuración → Opciones → '
+                    f'GDAL. El complemento añade .zip mientras recoge; si '
+                    f've este mensaje, esa corrección no llegó a aplicarse.')
         try:
             pet = urllib.request.Request(_url_https(url))
             # Dos bytes: la pregunta es si el servidor admite rangos, no
