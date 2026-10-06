@@ -1700,13 +1700,25 @@ cualquier producto derivado.</p>
                 f'del lote «{etiqueta}»: con él se pueden recuperar los '
                 f'trabajos desde HyP3 sin volver a gastar créditos.') from e
 
+        # La ruta COMPLETA, no el nombre: el paso siguiente consiste en
+        # señalar este archivo en «Recoger», y con solo el nombre hay que
+        # adivinar en qué carpeta quedó. El mensaje de error de más arriba
+        # ya daba la ruta entera, de modo que fallar informaba mejor que
+        # salir bien.
         feedback.pushInfo(
-            f"\n{len(enviados)} trabajo(s) enviado(s). Manifiesto → "
-            f"{os.path.basename(ruta)}")
+            f"\n{len(enviados)} trabajo(s) enviado(s). Manifiesto → {ruta}")
         feedback.pushInfo(
             "Los productos tardan de minutos a horas según la cola. Vuelva "
             "con el modo «Recoger» e indique este manifiesto; puede "
             "ejecutarlo tantas veces como quiera.")
+
+        # El saldo DESPUÉS de gastar, consultado y no calculado: es el
+        # número con el que se decide si cabe otro lote, y restar a mano
+        # daría por supuesto que se cobró exactamente lo estimado.
+        saldo_final, _pm = _saldo_creditos(token, feedback)
+        if saldo_final is not None:
+            feedback.pushInfo(
+                f"Saldo en HyP3 tras el pedido: {saldo_final:.0f} créditos.")
         if fallidos:
             feedback.pushWarning(
                 f"[!] {len(fallidos)} tanda(s) fallaron y no están en el "
