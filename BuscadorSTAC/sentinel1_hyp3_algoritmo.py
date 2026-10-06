@@ -103,7 +103,7 @@ from osgeo import gdal
 from .buscar_sentinel2_algoritmo import (
     AUTOR, AUTOR_EMAIL, RealcePostProcessor, _TIPO_POLIGONO, _cargar_pendientes,
     _enum_qgis, _registrar_postproc)
-from .core import sin_prefijo_bearer
+from .core import sin_firma_url, sin_prefijo_bearer
 
 _LOG = logging.getLogger('BuscadorSTAC')
 
@@ -1672,11 +1672,23 @@ cualquier producto derivado.</p>
             for a in (t.get('files') or []):
                 tam += int(a.get('size') or 0)
         if tam:
+            # La comparación solo se escribe cuando hay algo con que
+            # comparar: con res_m = 10 la frase anterior decía «a 10 m es
+            # llevadero; a 10 m sería unas nueve veces más», que no
+            # significa nada. Y a 10 m el aviso que hace falta es el
+            # contrario.
+            if int(res_m) <= 10:
+                comparacion = ('Es el espaciamiento más fino, y el que más '
+                               'transfiere: a 30 m serían unas nueve veces '
+                               'menos.')
+            else:
+                comparacion = (f'A {res_m} m es llevadero; a 10 m sería '
+                               f'unas nueve veces más.')
             feedback.pushInfo(
                 f"  Los productos suman {tam / 1e9:.1f} GB. HyP3 solo "
                 f"publica el ZIP completo, así que aunque se recorte sin "
-                f"descargarlo entero, la transferencia es de ese orden. A "
-                f"{res_m} m es llevadero; a 10 m sería unas nueve veces más.")
+                f"descargarlo entero, la transferencia es de ese orden. "
+                f"{comparacion}")
         recortes = self._descargar_recortes(
             listos, pols, bbox, carpeta, feedback, marca=marca)
         if not recortes:
@@ -1744,11 +1756,11 @@ cualquier producto derivado.</p>
                 if os.path.exists(destino):
                     salida[pol].append((destino, mes, fecha))
                     continue
-                fuente = self._ruta_banda(archivos, pol, feedback)
+                fuente, motivo = self._ruta_banda(archivos, pol)
                 if not fuente:
                     feedback.pushWarning(
-                        f"[!] {granulo[:32]}…: no se localizó la banda {pol} "
-                        f"dentro del producto; se omite esta fecha.")
+                        f"[!] {granulo[:32]}… {pol}: {motivo} Se omite esta "
+                        f"fecha.")
                     continue
                 ok = self._recortar(fuente, destino, bbox, feedback)
                 if ok:
@@ -1767,8 +1779,78 @@ cualquier producto derivado.</p>
         """
         return '/vsizip/{/vsicurl/' + url + '}'
 
-    def _ruta_banda(self, archivos, pol, feedback):
-        """Ruta VSI del GeoTIFF de esa polarización dentro del producto.
+    @staticmethod
+    def _diagnosticar_zip(url, espera=30):
+        """Por qué no se pudo leer el índice de un ZIP remoto.
+
+        GDAL no lo cuenta: VSIReadDirRecursive devuelve una lista vacía
+        tanto si el enlace venció como si el servidor no admite peticiones
+        de rango o devolvió una página de inicio de sesión. Sin esto, el
+        aviso se queda en «salió vacío» y el usuario no tiene de dónde
+        agarrar.
+
+        NO se manda el token de Earthdata. Si la URL es prefirmada no hace
+        falta —la credencial va en la cadena de consulta— y mandarlo
+        filtraría el token a un host de Amazon, que además rechaza una
+        petición que traiga las dos formas de autenticación a la vez. Lo
+        que se busca es justamente saber si hace falta autenticación: un
+        403 aquí lo responde.
+        """
+        seguro = sin_firma_url(url)
+        try:
+            pet = urllib.request.Request(_url_https(url))
+            # Dos bytes: la pregunta es si el servidor admite rangos, no
+            # qué hay dentro.
+            pet.add_header('Range', 'bytes=0-1')
+            # Esquema validado por _url_https arriba: B310 ya no aplica.
+            with urllib.request.urlopen(pet, timeout=espera) as r:  # nosec B310
+                codigo = getattr(r, 'status', None) or r.getcode()
+                rangos = r.headers.get('Accept-Ranges') or '(no declarado)'
+                tipo = r.headers.get('Content-Type') or '(sin tipo)'
+                tamano = (r.headers.get('Content-Range')
+                          or r.headers.get('Content-Length') or '(sin tamaño)')
+        except urllib.error.HTTPError as e:
+            if e.code in (401, 403):
+                return (f'{seguro}: HTTP {e.code}. El enlace venció o el '
+                        f'objeto exige autenticación de Earthdata, que GDAL '
+                        f'no le manda al leer por /vsicurl/. Vuelva a '
+                        f'ejecutar la recogida para pedir enlaces nuevos; si '
+                        f'sigue igual, el producto ya no es público.')
+            if e.code == 404:
+                return (f'{seguro}: HTTP 404. El producto ya no está en el '
+                        f'servidor; habría que volver a pedirlo a HyP3.')
+            return f'{seguro}: HTTP {e.code}.'
+        except urllib.error.URLError as e:
+            return f'{seguro}: no se pudo conectar ({e.reason}).'
+        except TimeoutError:
+            return f'{seguro}: el servidor no respondió en {espera} s.'
+        except ValueError as e:
+            return f'{seguro}: URL rechazada ({e}).'
+
+        if 'html' in tipo.lower():
+            return (f'{seguro}: el servidor devolvió {tipo} en vez del ZIP, '
+                    f'que es lo que pasa cuando la descarga redirige a una '
+                    f'página de inicio de sesión de Earthdata.')
+        if int(codigo or 0) == 200:
+            return (f'{seguro}: respondió 200 y no 206, de modo que ignora '
+                    f'las peticiones de rango (Accept-Ranges: {rangos}). '
+                    f'GDAL necesita rangos para leer el índice de un ZIP sin '
+                    f'bajárselo entero, así que no puede listarlo.')
+        return (f'{seguro}: HTTP {codigo}, rangos {rangos}, {tamano}, '
+                f'tipo {tipo}. El ZIP responde, así que el índice debería '
+                f'poder leerse; puede ser un ZIP mayor de 4 GiB con un '
+                f'índice que este GDAL no interpreta.')
+
+    def _ruta_banda(self, archivos, pol):
+        """(ruta VSI, None) o (None, motivo) de esa polarización.
+
+        Devuelve el MOTIVO en vez de informarlo por su cuenta. Antes
+        devolvía None para todo —URL rechazada, índice ilegible, índice
+        vacío, banda ausente— y quien llama añadía «no se localizó la banda
+        VH dentro del producto», que es una conclusión que no se puede
+        sostener: con el índice vacío no se sabe qué bandas trae el
+        producto. El registro quedaba con dos avisos por producto que se
+        contradecían, y el segundo señalaba la causa equivocada.
 
         HyP3 entrega UN solo archivo por trabajo: el ZIP del producto
         completo, con las bandas dentro. No publica los GeoTIFF sueltos, así
@@ -1789,31 +1871,28 @@ cualquier producto derivado.</p>
             try:
                 _url_https(url)
             except ValueError as e:
-                feedback.pushWarning(f"[!] URL de producto rechazada: {e}")
-                return None
+                return None, f'URL de producto rechazada: {e}'
             raiz = self._vsi_zip(url)
             try:
                 dentro = gdal.ReadDirRecursive(raiz)
             except RuntimeError as e:
-                feedback.pushWarning(
-                    f"[!] No se pudo leer el índice de {nombre}: {e}")
-                return None
+                # El mensaje de GDAL repite la URL, y la cadena de consulta
+                # de una URL prefirmada es la credencial.
+                return None, (f'{nombre}: no se pudo leer el índice: '
+                              f'{str(e).replace(url, sin_firma_url(url))}')
             if not dentro:
-                feedback.pushWarning(
-                    f"[!] {nombre}: el ZIP se abrió pero salió vacío. Si el "
-                    f"enlace prefirmado caducó, vuelva a ejecutar la "
-                    f"recogida: se piden enlaces nuevos en cada ejecución.")
-                return None
+                return None, (f'{nombre}: GDAL no pudo listar el contenido. '
+                              + self._diagnosticar_zip(url))
             sufijo = f'_{pol.upper()}.TIF'
             for interno in dentro:
                 if str(interno).upper().endswith(sufijo):
-                    return raiz + '/' + str(interno)
-            tifs = [x for x in dentro if str(x).upper().endswith('.TIF')]
-            feedback.pushWarning(
-                f"[!] {nombre}: no hay ninguna banda terminada en {sufijo}. "
-                f"GeoTIFF presentes: {tifs if tifs else 'ninguno'}")
-            return None
-        return None
+                    return raiz + '/' + str(interno), None
+            tifs = sorted(os.path.basename(str(x)) for x in dentro
+                          if str(x).upper().endswith('.TIF'))
+            return None, (f'{nombre}: el producto se listó bien pero no trae '
+                          f'ninguna banda terminada en {sufijo}. GeoTIFF '
+                          f'presentes: {tifs if tifs else "ninguno"}')
+        return None, 'el trabajo no declara ningún archivo .zip'
 
     def _recortar(self, fuente, destino, bbox, feedback):
         """Recorta al AOI la banda indicada. True si quedó algo utilizable.

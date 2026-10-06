@@ -1141,7 +1141,7 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             "solo descarga los bloques visibles.<br>"
             "• <i>Descargar recorte</i>: escribe un GeoTIFF comprimido por banda "
             "y escena, recortado al AOI.<br><br>"
-            "<b>Sensores:</b> Sentinel-2 L2A (10-20 m, desde 2017 en la región) y Landsat Collection 2 Nivel 2 (30 m, desde 1982). Las claves de banda son comunes a ambos, de modo que las composiciones RGB funcionan igual; Landsat no tiene red edge ni asset TCI, así que la vista previa se compone desde R/G/B y esas composiciones quedan vetadas. La nubosidad dentro del AOI se mide con SCL en Sentinel-2 y con los bits de QA_PIXEL en Landsat.<br><br>"  # noqa: E501
+            "<b>Sensores:</b> Sentinel-2 L2A (10-20 m, desde 2017) y Landsat Collection 2 Nivel 2 (30 m, desde 1982). Las claves de banda son comunes a ambos, de modo que las composiciones RGB funcionan igual; Landsat no tiene red edge ni asset TCI, así que la vista previa se compone desde R/G/B y esas composiciones quedan vetadas. La nubosidad dentro del AOI se mide con SCL en Sentinel-2 y con los bits de QA_PIXEL en Landsat.<br><br>"  # noqa: E501
             "<b>Flujo recomendado en Costa Rica (nubosidad alta):</b><br>"
             "1. Ejecute en modo <i>Solo catálogo</i> con miniaturas activadas "
             "y nubosidad de escena permisiva (50-70 %). Marque «Capa de "

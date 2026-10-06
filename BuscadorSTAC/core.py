@@ -619,6 +619,22 @@ def _codigo_meses(meses):
     return '.'.join(f"{m:02d}" for m in unicos)
 
 
+def sin_firma_url(url):
+    """URL sin su cadena de consulta, apta para el registro.
+
+    En una URL prefirmada la cadena de consulta ES la credencial: quien la
+    tenga puede descargar el objeto sin ninguna otra cosa. Por eso no puede
+    ir al registro de QGIS, que el usuario copia y pega en un informe de
+    error sin pensarlo. Se conserva el host y la ruta, que es lo que hace
+    falta para saber de donde venia.
+    """
+    texto = str(url or '')
+    corte = texto.find('?')
+    if corte < 0:
+        return texto
+    return texto[:corte] + '?<firma oculta>'
+
+
 def sin_prefijo_bearer(valor):
     """Token desnudo: quita un «Bearer » inicial si viene pegado.
 

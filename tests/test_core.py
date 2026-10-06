@@ -750,3 +750,39 @@ def test_recorta_espacios_y_salto_de_linea_del_archivo():
     """La via del archivo pasaba antes por .strip(); no se pierde eso."""
     assert core.sin_prefijo_bearer('  Bearer eyJabc\n') == 'eyJabc'
     assert core.sin_prefijo_bearer('eyJabc\n') == 'eyJabc'
+
+
+# =====================================================================
+# sin_firma_url. En una URL prefirmada la cadena de consulta ES la
+# credencial, y el registro de QGIS se copia y se pega en informes de
+# error sin pensarlo.
+# =====================================================================
+def test_quita_la_firma_de_una_url_prefirmada():
+    url = ('https://hyp3-contentbucket.s3.us-west-2.amazonaws.com/x/p.zip'
+           '?X-Amz-Algorithm=AWS4-HMAC-SHA256'
+           '&X-Amz-Signature=deadbeefcafe1234')
+    salida = core.sin_firma_url(url)
+    assert 'X-Amz-Signature' not in salida
+    assert 'deadbeefcafe1234' not in salida
+    # Pero sigue diciendo de donde venia, que es para lo que se registra.
+    assert salida.startswith(
+        'https://hyp3-contentbucket.s3.us-west-2.amazonaws.com/x/p.zip')
+    assert salida.endswith('?<firma oculta>')
+
+
+def test_una_url_sin_consulta_queda_igual():
+    url = 'https://example.org/a/b.zip'
+    assert core.sin_firma_url(url) == url
+
+
+def test_sin_firma_url_tolera_vacio():
+    assert core.sin_firma_url(None) == ''
+    assert core.sin_firma_url('') == ''
+
+
+def test_no_deja_pasar_la_firma_cuando_hay_varios_signos():
+    """Se corta en el PRIMER «?»: lo de despues es todo consulta."""
+    url = 'https://h/x.zip?a=1&b=?raro&X-Amz-Signature=secreto'
+    salida = core.sin_firma_url(url)
+    assert 'secreto' not in salida
+    assert salida == 'https://h/x.zip?<firma oculta>'

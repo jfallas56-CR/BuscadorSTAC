@@ -188,6 +188,27 @@ jobs:
           fi
           exit "${codigo:-1}"
 
+      - name: Leer un ZIP remoto por /vsizip/{/vsicurl/…}
+        # La recogida de Sentinel-1 informó «el ZIP se abrió pero salió
+        # vacío» en los 31 productos de un lote. ReadDirRecursive no dice
+        # por qué, así que esto separa las dos causas posibles: si falla
+        # aquí, con un servidor local y sin credenciales, la ruta VSI que
+        # compone el complemento es el fallo; si pasa, el problema está en
+        # el servidor remoto o en el enlace.
+        shell: bash
+        run: |
+          set +e
+          python3 tools/vsi_zip_test.py > /tmp/vsi.txt 2>&1
+          codigo=$?
+          cat /tmp/vsi.txt
+          if [ "${codigo:-1}" -ne 0 ]; then
+            grep -A3 -E '^  FALLA' /tmp/vsi.txt \
+              | grep -vE '^--$|^[[:space:]]*$' | head -30 \
+              | sed -e 's/^[[:space:]]*//' -e 's/^/::error::/'
+            echo "::error::vsi_zip_test.py salio con codigo ${codigo:-?}"
+          fi
+          exit "${codigo:-1}"
+
       - name: Exportar de verdad un ráster y un vector a KMZ
         # El smoke test comprueba el armazón; esto ejecuta la exportación
         # entera. Un fallo en la tubería de renderizado o en

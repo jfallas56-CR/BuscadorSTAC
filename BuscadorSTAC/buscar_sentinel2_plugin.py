@@ -102,7 +102,11 @@ class BuscarSentinel2Plugin:
         # inadvertida porque el algoritmo «sí funciona».
         self._anadir_accion(
             icono,
-            self.tr('Buscar y descargar escenas…'),
+            # El rótulo nombra el sensor, como los demás del menú: así la
+            # lista se lee por fuente y no hace falta abrir una entrada
+            # para saber de qué satélite es. El verbo se conserva en la
+            # ayuda emergente, que es donde cabe.
+            self.tr('Sentinel-2 / Landsat…'),
             self._abrir_algoritmo,
             self.tr('Abre el diálogo de búsqueda, previsualización y '
                     'descarga de Sentinel-2 / Landsat'))
