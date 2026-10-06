@@ -26,6 +26,30 @@ que esto forma parte de ella. **Si ya construyó un ZIP 1.0.0 antes de
 estos cambios, vuelva a construirlo**: dos ZIP distintos con el mismo
 número es justo lo que rompe la trazabilidad.
 
+- **Sentinel-1: medianas por estación, SRC de salida e informe de
+  auditoría.** La amplitud sola no dice sobre qué nivel se mide —una
+  diferencia de 0,001 no significa lo mismo sobre un fondo de 0,005 que
+  sobre uno de 0,05—, así que ahora se escriben también las dos
+  medianas, `MEDSECA_…` y `MEDLLUV_…`, con la misma máscara que la
+  amplitud: la resta de las dos coincide con el ráster de amplitud.
+
+  Los productos de HyP3 vienen en el UTM de la escena (EPSG:32616 en el
+  Pacífico norte) y los recortes lo conservaban hasta el final. El
+  parámetro «SRC de salida» reproyecta los PRODUCTOS FINALES al SRC que
+  se indique —CRTM05, EPSG:8908, para Costa Rica— después del cálculo,
+  no antes: reproyectar cada fecha remuestrearía la retrodispersión 31
+  veces para un estadístico que no depende de la rejilla. Vecino más
+  próximo a propósito, para conservar los valores medidos; queda dicho
+  en los metadatos del archivo.
+
+  Y un `INFORME_<lote>.html` por recogida, autocontenido: sin CDN, sin
+  fuentes remotas y sin plotly, porque un informe de auditoría se abre
+  cuando hace falta y entonces puede no haber red. Reúne de dónde salió
+  el dato, con qué parámetros se pidió, con cuáles se procesó, qué
+  fechas entraron en cada estación y qué salió, con sus estadísticos.
+  Eso estaba repartido entre el manifiesto, los metadatos de cada
+  GeoTIFF y el registro de QGIS, que no se guarda.
+
 - **El exportador a Google Earth no exportaba el ráster si la capa no
   estaba ya en WGS84** — es decir, casi nunca. Faltaba un
   `QgsRasterProjector` en la tubería: el escritor recorría la extensión

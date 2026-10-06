@@ -626,6 +626,126 @@ def _codigo_meses(meses):
 CREDITOS_RTC = {30: 5, 20: 15, 10: 60}
 
 
+def _esc(valor):
+    """Texto seguro para HTML. Nunca se interpola nada sin pasar por aqui."""
+    return (str('' if valor is None else valor)
+            .replace('&', '&amp;').replace('<', '&lt;')
+            .replace('>', '&gt;').replace('"', '&quot;'))
+
+
+def _tabla_html(titulo, filas, nota=''):
+    """Tabla clave/valor. `filas` es [(clave, valor)]."""
+    if not filas:
+        return ''
+    cuerpo = '\n'.join(
+        f'    <tr><th>{_esc(k)}</th><td>{_esc(v)}</td></tr>'
+        for k, v in filas)
+    pie = f'  <p class="nota">{_esc(nota)}</p>\n' if nota else ''
+    return (f'<section>\n  <h2>{_esc(titulo)}</h2>\n'
+            f'  <table>\n{cuerpo}\n  </table>\n{pie}</section>\n')
+
+
+def _tabla_cols_html(titulo, encabezados, filas, nota=''):
+    """Tabla de varias columnas. `filas` es [[celda, ...]]."""
+    if not filas:
+        return ''
+    cab = ''.join(f'<th>{_esc(h)}</th>' for h in encabezados)
+    cuerpo = '\n'.join(
+        '    <tr>' + ''.join(f'<td>{_esc(c)}</td>' for c in fila) + '</tr>'
+        for fila in filas)
+    pie = f'  <p class="nota">{_esc(nota)}</p>\n' if nota else ''
+    return (f'<section>\n  <h2>{_esc(titulo)}</h2>\n'
+            f'  <table>\n    <tr>{cab}</tr>\n{cuerpo}\n  </table>\n'
+            f'{pie}</section>\n')
+
+
+_CSS_INFORME = """
+:root { color-scheme: light dark; }
+body { font: 15px/1.55 system-ui, "Segoe UI", Roboto, sans-serif;
+       margin: 0 auto; max-width: 60rem; padding: 2rem 1rem;
+       background: #fff; color: #1a1a1a; }
+h1 { font-size: 1.5rem; margin: 0 0 .25rem; }
+h2 { font-size: 1.05rem; margin: 2rem 0 .5rem;
+     border-bottom: 2px solid #d8dde3; padding-bottom: .25rem; }
+.sub { color: #5a6570; margin: 0 0 1.5rem; }
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: .4rem .6rem; border-bottom: 1px solid
+         #e4e8ec; vertical-align: top; }
+th { width: 16rem; font-weight: 600; color: #333; }
+tr:first-child th { width: auto; }
+td { font-variant-numeric: tabular-nums; }
+.nota { color: #5a6570; font-size: .9rem; margin: .5rem 0 0; }
+.aviso { background: #fff7e6; border-left: 4px solid #e0a800;
+         padding: .6rem .9rem; margin: .6rem 0; }
+code { font-family: ui-monospace, Consolas, monospace; font-size: .92em; }
+footer { margin-top: 2.5rem; color: #5a6570; font-size: .85rem;
+         border-top: 1px solid #e4e8ec; padding-top: .8rem; }
+@media (prefers-color-scheme: dark) {
+  body { background: #16191c; color: #e6e6e6; }
+  h2 { border-bottom-color: #333a41; }
+  th, td { border-bottom-color: #2a2f35; }
+  th { color: #cfd6dd; }
+  .sub, .nota, footer { color: #9aa4ae; }
+  .aviso { background: #2a2410; border-left-color: #c89b1b; }
+}
+@media print { body { max-width: none; } h2 { page-break-after: avoid; } }
+"""
+
+
+def informe_html(datos):
+    """Informe de auditoria de un lote, en HTML autocontenido.
+
+    Sin dependencias: ni plotly ni CDN ni fuentes remotas. Un informe de
+    auditoria tiene que poder abrirse dentro de diez anios y en una
+    maquina sin red, que es justo cuando hace falta.
+
+    Vive en core.py --y no en el algoritmo-- porque es construccion de
+    texto y se prueba sin QGIS.
+    """
+    partes = [
+        _tabla_html('Lote', datos.get('lote') or []),
+        _tabla_html('Parametros de la ejecucion', datos.get('parametros')
+                    or [],
+                    'Son los que gobiernan ESTE calculo. Los que fijo el '
+                    'pedido viajan dentro del dato y se listan arriba.'),
+        _tabla_cols_html(
+            'Productos escritos',
+            ('Producto', 'Archivo', 'Minimo', 'Maximo', 'Mediana',
+             '% validos'),
+            datos.get('productos') or [],
+            'La amplitud es la resta de las dos medianas, pixel a pixel. '
+            'Las tres llevan la misma mascara, de modo que la resta de los '
+            'dos rasteres de mediana coincide con el de amplitud.'),
+        _tabla_cols_html('Escenas usadas', ('Estacion', 'N', 'Fechas'),
+                         datos.get('escenas') or [],
+                         'Una escena por fecha y traza. Mezclar trazas '
+                         'invalidaria la serie: otra orbita relativa observa '
+                         'con otro angulo de incidencia.'),
+        _tabla_html('Entorno', datos.get('entorno') or []),
+        _tabla_html('Fuentes y licencias', datos.get('fuentes') or []),
+    ]
+    avisos = ''.join(
+        f'<div class="aviso">{_esc(a)}</div>\n'
+        for a in (datos.get('avisos') or []))
+    titulo = _esc(datos.get('titulo') or 'Informe')
+    return (
+        '<!DOCTYPE html>\n<html lang="es">\n<head>\n'
+        '<meta charset="utf-8">\n'
+        '<meta name="viewport" content="width=device-width, '
+        'initial-scale=1">\n'
+        f'<title>{titulo}</title>\n<style>{_CSS_INFORME}</style>\n'
+        '</head>\n<body>\n'
+        f'<h1>{titulo}</h1>\n'
+        f'<p class="sub">Generado {_esc(datos.get("generado"))} por '
+        f'{_esc(datos.get("generado_por"))}</p>\n'
+        f'{avisos}'
+        + ''.join(partes) +
+        '<footer>Informe de auditoria: registra con que datos y con que '
+        'parametros se produjo cada archivo, para poder repetirlo o '
+        'revisarlo mas tarde.</footer>\n'
+        '</body>\n</html>\n')
+
+
 def lista_con_zip(valor):
     """La lista blanca de extensiones de /vsicurl/, con «.zip» incluido.
 

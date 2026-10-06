@@ -86,6 +86,7 @@ from qgis.core import (
     QgsProcessingOutputFolder,
     QgsProcessingParameterAuthConfig,
     QgsProcessingParameterBoolean,
+    QgsProcessingParameterCrs,
     QgsProcessingParameterEnum,
     QgsProcessingParameterExtent,
     QgsProcessingParameterFeatureSource,
@@ -659,6 +660,7 @@ class Sentinel1Hyp3Algorithm(QgsProcessingAlgorithm):
     CONFIRMAR = 'CONFIRMAR'
     TOPE_CREDITOS = 'TOPE_CREDITOS'
     MANIFIESTO = 'MANIFIESTO'
+    SRC_SALIDA = 'SRC_SALIDA'
     CARPETA = 'CARPETA'
     SALIDA = 'SALIDA'
 
@@ -671,6 +673,10 @@ class Sentinel1Hyp3Algorithm(QgsProcessingAlgorithm):
         # Se enciende si el servidor obliga a averiguar el tamaño por
         # rangos en vez de con HEAD. Ver _listar_zip.
         self._sin_head = False
+        # SRC de salida pedido, y filas del informe de auditoría.
+        self._crs_salida = None
+        self._prod_informe = []
+        self._avisos_informe = []
 
     # ------------------------------------------------------------ identidad
     def tr(self, cadena):
@@ -956,6 +962,24 @@ cualquier producto derivado.</p>
             'luego no entra en la amplitud; se avisa cuando ocurre.'))
         self.addParameter(p)
 
+        p = QgsProcessingParameterCrs(
+            self.SRC_SALIDA,
+            self.tr('SRC de salida (vacío = el nativo del producto)'),
+            optional=True)
+        p.setHelp(self.tr(
+            'Los productos de HyP3 vienen en el UTM de la escena —en Costa '
+            'Rica, EPSG:32616 o 32617— y los recortes lo conservan, porque '
+            'reproyectar la retrodispersión antes de calcular la mediana '
+            'la resamplearía sin necesidad.<br><br>'
+            'Indique aquí un SRC solo si quiere los PRODUCTOS FINALES en '
+            'otro: la amplitud, las medianas y el recuento se reproyectan '
+            'al terminar, cuando el cálculo ya está hecho. Para Costa Rica '
+            'lo habitual es CRTM05 (EPSG:8908).<br><br>'
+            'Se remuestrea por vecino más próximo, a propósito: conserva '
+            'exactamente los valores medidos en vez de inventar promedios '
+            'entre píxeles. El coste es geométrico, hasta medio píxel.'))
+        self.addParameter(p)
+
         p = QgsProcessingParameterNumber(
             self.MIN_OBS, self.tr('Mínimo de observaciones por píxel y '
                                   'estación'),
@@ -1027,6 +1051,12 @@ cualquier producto derivado.</p>
             parameters, self.CLAVE_EDL, context) or '').strip()
         carpeta = (self.parameterAsFile(parameters, self.CARPETA, context)
                    or '').strip()
+        # SRC de salida: vacio = el nativo del producto. Se guarda en la
+        # instancia porque lo usa _escribir, al final de una cadena de
+        # llamadas por la que no vale la pena arrastrar un parametro mas.
+        crs_pedido = self.parameterAsCrs(parameters, self.SRC_SALIDA, context)
+        self._crs_salida = (crs_pedido.authid()
+                            if crs_pedido and crs_pedido.isValid() else None)
         traza = self.parameterAsInt(parameters, self.TRAZA, context)
         min_obs = self.parameterAsInt(parameters, self.MIN_OBS, context)
 
@@ -1953,6 +1983,8 @@ cualquier producto derivado.</p>
         if len(pols) == 2 and 'VH' in recortes and 'VV' in recortes:
             self._amplitud_rvi(recortes, seca, lluvia, min_obs, man, carpeta,
                                context, feedback)
+        self._informe_auditoria(man, lote, min_obs, carpeta, recortes,
+                                seca, lluvia, feedback)
         return {self.SALIDA: carpeta}
 
     def _descargar_recortes(self, trabajos, pols, bbox, carpeta, feedback,
@@ -1985,6 +2017,11 @@ cualquier producto derivado.</p>
                 f"  {clave_ext} estaba en «{previo_ext}», que no permite "
                 f"abrir .zip por /vsicurl/. Se añade .zip mientras dure la "
                 f"recogida y se deja como estaba al terminar.")
+            self._avisos_informe.append(
+                f'{clave_ext} estaba en «{previo_ext}» y no permite abrir '
+                f'.zip por /vsicurl/. Se añadió .zip durante la recogida y '
+                f'se restauró al terminar; sin eso GDAL no abre ningún '
+                f'producto, en silencio.')
         try:
             return self._descargar_recortes_int(
                 trabajos, pols, bbox, carpeta, feedback, marca)
@@ -2397,6 +2434,13 @@ cualquier producto derivado.</p>
                 suficiente = (n_s >= min_obs) & (n_l >= min_obs)
                 descartados = int((~suficiente).sum())
                 amplitud = np.where(suficiente, amplitud, np.nan)
+                # Las medianas se enmascaran IGUAL que la amplitud. Si no,
+                # un píxel con una sola observación tendría mediana pero no
+                # amplitud, y la resta de los dos rásteres publicados
+                # dejaría de coincidir con el ráster de amplitud justo
+                # donde el dato es más flojo.
+                med_s = np.where(suficiente, med_s, np.nan)
+                med_l = np.where(suficiente, med_l, np.nan)
 
             feedback.pushInfo(
                 f"    observaciones por píxel — seca: {int(n_s.min())}–"
@@ -2414,7 +2458,8 @@ cualquier producto derivado.</p>
 
             self._escribir(amplitud, n_s, n_l, sufijo, geo, proj, ancho, alto,
                            seca, lluvia, min_obs, len(secas), len(lluvias),
-                           fechas_s, fechas_l, man, carpeta, context, feedback)
+                           fechas_s, fechas_l, man, carpeta, context, feedback,
+                           medianas=(med_s, med_l))
         except (RuntimeError, ValueError, OSError) as e:
             feedback.pushWarning(f"[_amplitud] {sufijo}: {e}")
         finally:
@@ -2502,9 +2547,180 @@ cualquier producto derivado.</p>
         ds = None
         return True
 
+    def _informe_auditoria(self, man, lote, min_obs, carpeta, recortes,
+                           seca, lluvia, feedback):
+        """Escribe el informe HTML del lote.
+
+        Reúne en un solo archivo lo que hace falta para repetir o revisar
+        el cálculo: de dónde salió el dato, con qué parámetros se pidió,
+        con cuáles se procesó aquí, qué fechas entraron en cada estación y
+        qué salió. Esos datos estaban repartidos entre el manifiesto, los
+        metadatos de cada GeoTIFF y el registro de QGIS —que no se guarda—,
+        de modo que reconstruirlo seis meses después era trabajo manual.
+        """
+        from .core import informe_html
+
+        fechas = {'seca': set(), 'lluvia': set()}
+        for _pol, lst in (recortes or {}).items():
+            for _ruta, mes, fecha in lst:
+                if mes in seca:
+                    fechas['seca'].add(fecha)
+                elif mes in lluvia:
+                    fechas['lluvia'].add(fecha)
+
+        try:
+            from qgis.core import Qgis
+            version_qgis = Qgis.QGIS_VERSION
+        except (ImportError, AttributeError):
+            version_qgis = '?'
+
+        datos = {
+            'titulo': f'Informe de auditoría · {lote}',
+            'generado': datetime.now(timezone.utc).strftime(
+                '%Y-%m-%dT%H:%M:%SZ'),
+            'generado_por': f'BuscadorSTAC {self.VERSION}',
+            'avisos': list(self._avisos_informe),
+            'lote': [
+                ('Nombre del lote', lote),
+                ('Año', man.get('anio', '?')),
+                ('Traza', f"{man.get('traza', '?')} "
+                          f"{man.get('direccion', '?')}"),
+                ('Espaciamiento de píxel', f"{man.get('resolucion_m', '?')} m"),
+                ('Radiometría', man.get('radiometria', '?')),
+                ('Escala', man.get('escala', '?')),
+                ('Filtro de speckle',
+                 'sí' if man.get('filtro_speckle') else 'no'),
+                ('Polarización pedida', man.get('polarizacion', '?')),
+                ('AOI del pedido (EPSG:4326)',
+                 ', '.join(f'{v:.5f}' for v in (man.get('bbox_4326') or []))),
+                ('Pedido creado', man.get('creado', '?')),
+            ],
+            'parametros': [
+                ('Meses de estación seca',
+                 ','.join(str(m) for m in sorted(seca))),
+                ('Meses de estación lluviosa',
+                 ','.join(str(m) for m in sorted(lluvia))),
+                ('Mínimo de observaciones por píxel y estación', min_obs),
+                ('SRC de salida',
+                 self._crs_salida or 'el nativo del producto'),
+                ('Remuestreo al reproyectar',
+                 'vecino más próximo' if self._crs_salida else '(no aplica)'),
+                ('Carpeta', carpeta),
+            ],
+            'productos': list(self._prod_informe),
+            'escenas': [
+                [est, len(fechas[est]), ', '.join(sorted(fechas[est]))]
+                for est in ('seca', 'lluvia') if fechas[est]
+            ],
+            'entorno': [
+                ('QGIS', version_qgis),
+                ('GDAL', gdal.VersionInfo('RELEASE_NAME') if gdal else '?'),
+                ('Complemento', f'BuscadorSTAC {self.VERSION}'),
+                ('Autor', f'{AUTOR} <{AUTOR_EMAIL}>'),
+            ],
+            'fuentes': [
+                ('Sentinel-1 GRD',
+                 'Copernicus Sentinel data (ESA), acceso abierto'),
+                ('Productos RTC',
+                 'ASF DAAC HyP3, procesados con software GAMMA'),
+                ('Cita requerida por ASF',
+                 'Los productos de HyP3 deben citarse; ver '
+                 'hyp3-docs.asf.alaska.edu'),
+                ('Estadístico',
+                 'mediana por estación, en potencia; amplitud = seca − lluvia'),
+                ('Advertencia',
+                 'Serie válida solo DENTRO de una traza. La humedad del '
+                 'suelo mueve la retrodispersión por sí sola.'),
+            ],
+        }
+        ruta = os.path.join(carpeta, f'INFORME_{lote}.html')
+        try:
+            with open(ruta, 'w', encoding='utf-8') as fh:
+                fh.write(informe_html(datos))
+        except OSError as e:
+            feedback.pushWarning(f'[!] No se pudo escribir el informe: {e}')
+            return
+        feedback.pushInfo(f"\ninforme de auditoría → {ruta}")
+
+    def _reproyectar(self, ruta, feedback):
+        """Reproyecta un GeoTIFF en su sitio al SRC de salida pedido.
+
+        Se hace AL FINAL, sobre los productos, y no sobre los recortes:
+        reproyectar cada fecha antes de la mediana resamplearía la
+        retrodispersión 31 veces para calcular un estadístico que no
+        depende de la rejilla.
+
+        Vecino más próximo a propósito: conserva exactamente los valores
+        medidos. Un bilineal inventaría promedios entre píxeles vecinos, y
+        este producto existe para ser auditado.
+
+        Los metadatos se vuelven a escribir después porque gdal.Warp no
+        garantiza conservarlos, y perder la procedencia de un producto que
+        se publica para auditoría sería peor que no reproyectar.
+        """
+        destino_srs = getattr(self, '_crs_salida', None)
+        if not destino_srs:
+            return ruta
+        ds = gdal.Open(ruta)
+        if ds is None:
+            return ruta
+        meta = dict(ds.GetMetadata() or {})
+        descripciones = [ds.GetRasterBand(i + 1).GetDescription()
+                         for i in range(ds.RasterCount)]
+        ds = None
+        tmp = ruta[:-4] + '_reproy.tif'
+        try:
+            salida = gdal.Warp(
+                tmp, ruta,
+                options=gdal.WarpOptions(
+                    format='GTiff', dstSRS=destino_srs,
+                    resampleAlg='near',
+                    creationOptions=['COMPRESS=DEFLATE', 'TILED=YES']))
+        except RuntimeError as e:
+            feedback.pushWarning(
+                f'[!] No se pudo reproyectar {os.path.basename(ruta)} a '
+                f'{destino_srs}: {e}. Queda en su SRC nativo.')
+            return ruta
+        if salida is None:
+            feedback.pushWarning(
+                f'[!] No se pudo reproyectar {os.path.basename(ruta)} a '
+                f'{destino_srs}. Queda en su SRC nativo.')
+            return ruta
+        salida = None
+        try:
+            os.replace(tmp, ruta)
+        except OSError as e:
+            feedback.pushWarning(f'[reproyectar] {e}')
+            return ruta
+        meta['SRC_REPROYECTADO_A'] = str(destino_srs)
+        meta['REMUESTREO_REPROYECCION'] = (
+            'vecino mas proximo: conserva los valores medidos, a cambio de '
+            'hasta medio pixel de desplazamiento geometrico')
+        ds = gdal.Open(ruta, gdal.GA_Update)
+        if ds is not None:
+            ds.SetMetadata({k: str(v) for k, v in meta.items()})
+            for i, desc in enumerate(descripciones):
+                if desc:
+                    ds.GetRasterBand(i + 1).SetDescription(desc)
+            ds.FlushCache()
+            ds = None
+        return ruta
+
+    @staticmethod
+    def _meter_meta(ruta, meta, descripcion):
+        """Metadatos y descripción de banda en un GeoTIFF ya escrito."""
+        ds = gdal.Open(ruta, gdal.GA_Update)
+        if ds is None:
+            return False
+        ds.GetRasterBand(1).SetDescription(descripcion)
+        ds.SetMetadata({k: str(v) for k, v in meta.items()})
+        ds.FlushCache()
+        ds = None
+        return True
+
     def _escribir(self, amplitud, n_s, n_l, sufijo, geo, proj, ancho, alto,
                   seca, lluvia, min_obs, n_esc_s, n_esc_l, fechas_s, fechas_l,
-                  man, carpeta, context, feedback):
+                  man, carpeta, context, feedback, medianas=None):
         """Escribe la amplitud y el recuento, y los deja cargados."""
         traza = man.get('traza', '?')
         direccion = str(man.get('direccion') or '?')
@@ -2522,13 +2738,12 @@ cualquier producto derivado.</p>
         if not self._guardar_float(destino, amplitud, geo, proj, ancho, alto):
             raise RuntimeError(f'No se pudo crear {destino}')
 
-        ds = gdal.Open(destino, gdal.GA_Update)
-        if ds is not None:
-            ds.GetRasterBand(1).SetDescription(
-                f'AMPL_{sufijo} seca-lluvia (gamma0 potencia)')
-            ds.SetMetadata({
+        # Los metadatos comunes se arman UNA vez y los comparten la
+        # amplitud y las dos medianas: tres productos del mismo cálculo que
+        # describieran su procedencia de tres maneras distintas serían
+        # exactamente lo que estos metadatos existen para evitar.
+        meta_comun = {
                 'POLARIZACION': sufijo,
-                'SIGNO': 'seca menos lluvia',
                 'ESCALA': ESCALA,
                 'RADIOMETRIA': RADIOMETRIA,
                 'TRAZA': str(traza),
@@ -2549,11 +2764,59 @@ cualquier producto derivado.</p>
                     'relativa observa con otro angulo de incidencia.'),
                 'FUENTE': ('Copernicus Sentinel-1 (ESA); RTC por ASF DAAC '
                            'HyP3 con GAMMA'),
-                'GENERADO_POR': f'buscar_sentinel2_cr {self.VERSION}',
+                'GENERADO_POR': f'BuscadorSTAC {self.VERSION}',
                 'AUTOR': f'{AUTOR} <{AUTOR_EMAIL}>',
-            })
-            ds.FlushCache()
-            ds = None
+        }
+
+        meta_amp = dict(meta_comun)
+        meta_amp['SIGNO'] = 'seca menos lluvia'
+        meta_amp['ESTADISTICO'] = 'diferencia de medianas por estacion'
+        self._meter_meta(destino, meta_amp,
+                         f'AMPL_{sufijo} seca-lluvia (gamma0 potencia)')
+        self._reproyectar(destino, feedback)
+        escritos = [('amplitud', destino)]
+
+        # Las medianas por estación. La amplitud sola no dice sobre qué
+        # nivel se mide: una diferencia de 0.001 no significa lo mismo
+        # sobre un fondo de 0.005 que sobre uno de 0.05, y sin las
+        # medianas no hay manera de saberlo desde el producto.
+        if medianas is not None:
+            nucleo = (f"S1_{man.get('anio', '0000')}_T{traza}{letra}"
+                      f"_{man.get('resolucion_m', '00')}m_{sufijo}")
+            for arr, etiqueta, nombre, meses in (
+                    (medianas[0], 'seca',
+                     f'MEDSECA_{nucleo}_S{_codigo_meses(seca)}', seca),
+                    (medianas[1], 'lluvia',
+                     f'MEDLLUV_{nucleo}_L{_codigo_meses(lluvia)}', lluvia)):
+                ruta_m = os.path.join(carpeta, f'{nombre}.tif')
+                if not self._guardar_float(ruta_m, arr, geo, proj, ancho,
+                                           alto):
+                    feedback.pushWarning(f'[!] No se pudo crear {ruta_m}')
+                    continue
+                meta_m = dict(meta_comun)
+                meta_m['ESTACION'] = etiqueta
+                meta_m['ESTADISTICO'] = f'mediana de la estacion {etiqueta}'
+                meta_m['MESES'] = ','.join(str(m) for m in sorted(meses))
+                meta_m['ENMASCARADO_COMO_LA_AMPLITUD'] = (
+                    'si: los pixeles sin MIN_OBS_POR_PIXEL en AMBAS '
+                    'estaciones van a NaN, para que la resta de las dos '
+                    'medianas coincida con el raster de amplitud')
+                self._meter_meta(
+                    ruta_m, meta_m,
+                    f'MED_{sufijo} {etiqueta} (gamma0 potencia)')
+                self._reproyectar(ruta_m, feedback)
+                escritos.append((f'mediana {etiqueta}', ruta_m))
+                if np.isfinite(arr).any():
+                    feedback.pushInfo(
+                        f"  mediana {etiqueta} → {os.path.basename(ruta_m)}  "
+                        f"[{np.nanmin(arr):.5f} … {np.nanmax(arr):.5f}], "
+                        f"mediana {float(np.nanmedian(arr)):.5f}")
+                    self._prod_informe.append([
+                        f'mediana {etiqueta} {sufijo}',
+                        os.path.basename(ruta_m),
+                        f'{np.nanmin(arr):.5f}', f'{np.nanmax(arr):.5f}',
+                        f'{float(np.nanmedian(arr)):.5f}',
+                        f'{100.0 * np.isfinite(arr).mean():.1f} %'])
 
         validos = np.isfinite(amplitud)
         if validos.any():
@@ -2562,6 +2825,11 @@ cualquier producto derivado.</p>
                 f"[{np.nanmin(amplitud):+.4f} … {np.nanmax(amplitud):+.4f}], "
                 f"mediana {float(np.nanmedian(amplitud)):+.4f}, "
                 f"{100.0 * validos.mean():.0f} % válidos")
+            self._prod_informe.append([
+                f'amplitud {sufijo}', os.path.basename(destino),
+                f'{np.nanmin(amplitud):+.5f}', f'{np.nanmax(amplitud):+.5f}',
+                f'{float(np.nanmedian(amplitud)):+.5f}',
+                f'{100.0 * validos.mean():.1f} %'])
             feedback.pushInfo(
                 "    Signo: seca − lluvia, en POTENCIA. En VH una caída "
                 "grande hacia la seca indica pérdida de volumen dispersor "
@@ -2616,6 +2884,7 @@ cualquier producto derivado.</p>
                 })
                 ds_n.FlushCache()
                 ds_n = None
+                self._reproyectar(ruta_nobs, feedback)
                 feedback.pushInfo(
                     f"  recuento → {os.path.basename(ruta_nobs)} "
                     f"(banda 1 = seca, banda 2 = lluvia)")

@@ -947,3 +947,66 @@ def test_conserva_la_restriccion_del_usuario():
 
 def test_tolera_espacios_sueltos():
     assert core.lista_con_zip(' .tif , .jp2 ') == '.tif,.jp2,.zip'
+
+
+# =====================================================================
+# informe_html. Un informe de auditoría tiene que poder abrirse dentro
+# de diez años y en una máquina sin red: sin CDN, sin fuentes remotas y
+# sin plotly.
+# =====================================================================
+def _datos_minimos(**extra):
+    base = {'titulo': 'Lote de prueba', 'generado': '2026-10-06T00:00:00Z',
+            'generado_por': 'BuscadorSTAC v1.0.0'}
+    base.update(extra)
+    return base
+
+
+def test_el_informe_no_trae_recursos_remotos():
+    h = core.informe_html(_datos_minimos(
+        lote=[('Traza', '157 descending')]))
+    for patron in ('http://', 'https://', '<script', 'cdn'):
+        assert patron not in h.lower(), patron
+
+
+def test_el_informe_escapa_el_html_de_los_datos():
+    """Un nombre de archivo con «<» no puede inyectar etiquetas."""
+    h = core.informe_html(_datos_minimos(
+        lote=[('Archivo', '<img src=x onerror=alert(1)>')]))
+    assert '<img' not in h
+    assert '&lt;img' in h
+
+
+def test_el_informe_escapa_tambien_el_titulo():
+    h = core.informe_html({'titulo': '<script>alert(1)</script>'})
+    assert '<script>alert(1)' not in h
+    assert '&lt;script&gt;' in h
+
+
+def test_las_secciones_vacias_no_se_dibujan():
+    """Una tabla sin filas no debe dejar un encabezado huérfano."""
+    h = core.informe_html(_datos_minimos())
+    assert 'Productos escritos' not in h
+    assert 'Escenas usadas' not in h
+
+
+def test_el_informe_incluye_los_avisos():
+    h = core.informe_html(_datos_minimos(
+        avisos=['CPL_VSIL_CURL_ALLOWED_EXTENSIONS no permitia .zip']))
+    assert 'CPL_VSIL_CURL_ALLOWED_EXTENSIONS' in h
+    assert 'class="aviso"' in h
+
+
+def test_el_informe_lleva_los_valores_que_se_le_pasan():
+    h = core.informe_html(_datos_minimos(
+        productos=[['amplitud VH', 'AMPL.tif', '-0.03', '+0.13', '-0.001',
+                    '100 %']],
+        escenas=[['seca', 13, '2025-01-03']]))
+    for v in ('amplitud VH', 'AMPL.tif', '+0.13', 'seca', '2025-01-03'):
+        assert v in h, v
+
+
+def test_el_informe_es_html_completo():
+    h = core.informe_html(_datos_minimos())
+    assert h.startswith('<!DOCTYPE html>')
+    assert h.rstrip().endswith('</html>')
+    assert 'lang="es"' in h
