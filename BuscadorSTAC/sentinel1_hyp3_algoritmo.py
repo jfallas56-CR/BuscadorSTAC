@@ -1987,8 +1987,19 @@ cualquier producto derivado.</p>
         if len(pols) == 2 and 'VH' in recortes and 'VV' in recortes:
             self._amplitud_rvi(recortes, seca, lluvia, min_obs, man, carpeta,
                                context, feedback)
-        self._informe_auditoria(man, lote, min_obs, carpeta, recortes,
-                                seca, lluvia, feedback)
+        # El informe es un extra, y va al FINAL de una colecta que puede
+        # haber tardado media hora. Si fallara, los rásteres ya están
+        # escritos pero la ejecución se daría por fallida y las capas no
+        # llegarían a cargarse: se perdería el producto por un accesorio.
+        # De ahí que se capture todo y no solo lo previsible.
+        try:
+            self._informe_auditoria(man, lote, min_obs, carpeta, recortes,
+                                    seca, lluvia, feedback)
+        except Exception as e:                               # noqa: BLE001
+            feedback.pushWarning(
+                f'[!] No se pudo generar el informe de auditoría ({e}). '
+                f'Los rásteres y sus metadatos están escritos y no les '
+                f'afecta: el informe los resume, no los produce.')
         return {self.SALIDA: carpeta}
 
     def _descargar_recortes(self, trabajos, pols, bbox, carpeta, feedback,
