@@ -25,7 +25,7 @@ cambió ni una línea de ellos.
 
 Autor    : Jorge Fallas (jfallas56@gmail.com)
 Licencia : GPL v2 o posterior
-Versión  : 1.0.3
+Versión  : 1.0.4
 """
 
 import datetime
@@ -1076,3 +1076,53 @@ def capa_a_promover(nombres, doc_texto):
     if not capas[0].startswith('layers/'):
         return None          # no es la forma que escribe LIBKML
     return capas[0]
+
+
+# Grados a metros: radio medio de la Tierra. Para un aviso de orden de
+# magnitud no hace falta el elipsoide.
+_M_POR_GRADO_LAT = 110574.0
+_M_POR_GRADO_LON = 111320.0
+
+# A partir de cuantos grados de lado conviene avisar de que la extension
+# es la de la capa entera y seguramente no es lo que se queria. Diez
+# grados son unos 1100 km: ya no es un area de trabajo, es un continente.
+GRADOS_EXTENSION_SOSPECHOSA = 10.0
+
+
+def metros_por_pixel(oeste, sur, este, norte, cols, filas):
+    """(m/px en x, m/px en y) de una imagen en grados, en su centro.
+
+    Es el numero que dice si una exportacion sirve de algo ANTES de
+    abrirla: un basemap WMTS declara extension mundial, y 2048 px
+    repartidos en 360 grados dan ~19 km por pixel. El sitio que el
+    usuario queria ver ocupa entonces menos de un pixel.
+
+    En x se corrige por el coseno de la latitud central, porque un grado
+    de longitud no mide lo mismo en el ecuador que en Finlandia.
+    """
+    try:
+        cols = int(cols)
+        filas = int(filas)
+    except (TypeError, ValueError):
+        return None, None
+    if cols <= 0 or filas <= 0:
+        return None, None
+    ancho = float(este) - float(oeste)
+    alto = float(norte) - float(sur)
+    if ancho <= 0 or alto <= 0:
+        return None, None
+    lat_centro = (float(norte) + float(sur)) / 2.0
+    cos_lat = math.cos(math.radians(max(-89.9, min(89.9, lat_centro))))
+    mx = ancho * _M_POR_GRADO_LON * cos_lat / cols
+    my = alto * _M_POR_GRADO_LAT / filas
+    return mx, my
+
+
+def extension_sospechosa(oeste, sur, este, norte):
+    """¿La extension es tan grande que seguramente no es la pedida?"""
+    try:
+        ancho = abs(float(este) - float(oeste))
+        alto = abs(float(norte) - float(sur))
+    except (TypeError, ValueError):
+        return False
+    return max(ancho, alto) > GRADOS_EXTENSION_SOSPECHOSA

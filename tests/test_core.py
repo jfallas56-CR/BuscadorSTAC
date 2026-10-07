@@ -1156,3 +1156,47 @@ def test_no_aplana_un_superoverlay_de_una_sola_tesela():
     assert core.capa_a_promover(nombres, doc) is None
     # Y aunque alguien quitara los PNG, la ruta sigue delatandolo.
     assert core.capa_a_promover(['doc.kml', '0/0/0.kml'], doc) is None
+
+
+# --------------------------------------------------------------------------
+# Resolucion en el terreno y extensiones sospechosas
+# --------------------------------------------------------------------------
+def test_metros_por_pixel_del_caso_real():
+    """El basemap WMTS de EOX: mundo entero en 2048 px.
+
+    Es el KMZ que «no cargo la imagen»: 360 grados de longitud repartidos
+    entre 2048 pixeles. El numero tiene que delatarlo.
+    """
+    mx, my = core.metros_por_pixel(-180.0, -85.051129, 180.0, 85.051129,
+                                   2048, 968)
+    assert 19000 < mx < 20000, mx       # ~19.6 km por pixel en el ecuador
+    assert 19000 < my < 20000, my
+
+
+def test_metros_por_pixel_de_un_area_de_trabajo():
+    """Turrialba, 0.1 grados de lado en 2048 px: unos 5 m por pixel."""
+    mx, my = core.metros_por_pixel(-83.73, 9.85, -83.63, 9.95, 2048, 2048)
+    assert 4 < mx < 6, mx
+    assert 5 < my < 6, my
+
+
+def test_metros_por_pixel_corrige_por_la_latitud():
+    """Un grado de longitud mide menos lejos del ecuador."""
+    ecuador, _ = core.metros_por_pixel(0, 0, 1, 1, 100, 100)
+    norte, _ = core.metros_por_pixel(0, 59.5, 1, 60.5, 100, 100)
+    assert norte < ecuador / 1.9, (norte, ecuador)
+
+
+def test_metros_por_pixel_rechaza_lo_degenerado():
+    assert core.metros_por_pixel(0, 0, 0, 1, 10, 10) == (None, None)
+    assert core.metros_por_pixel(0, 0, 1, 1, 0, 10) == (None, None)
+    assert core.metros_por_pixel(0, 0, 1, 1, 10, -3) == (None, None)
+    assert core.metros_por_pixel(0, 0, 1, 1, 'x', 10) == (None, None)
+
+
+def test_extension_sospechosa_separa_el_mundo_de_un_area():
+    assert core.extension_sospechosa(-180, -85, 180, 85)      # mundo
+    assert core.extension_sospechosa(-86, 8, -82, 24)         # 16 grados
+    assert not core.extension_sospechosa(-83.73, 9.85, -83.63, 9.95)
+    assert not core.extension_sospechosa(-86, 8, -82, 12)     # 4 grados
+    assert not core.extension_sospechosa(None, 0, 1, 1)

@@ -1,6 +1,6 @@
 # Buscador STAC: Sentinel, Landsat y Esri Wayback
 
-![version](https://img.shields.io/badge/version-1.0.3-blue)
+![version](https://img.shields.io/badge/version-1.0.4-blue)
 ![QGIS](https://img.shields.io/badge/QGIS-%E2%89%A5%203.28-green)
 ![licencia](https://img.shields.io/badge/licencia-GPL%20v2%2B-orange)
 
@@ -337,6 +337,30 @@ entendieron y cuántas no. Un `03/01/2025` se rechaza a propósito —no se pued
 saber si es 3 de enero o 1 de marzo, y adivinarlo desplazaría la serie
 entera—; `2025/01/03` sí se acepta, porque empieza por el año.
 
+**El área a exportar, y por qué importa con un mapa base.** Si deja «Ráster:
+área a exportar» vacío se exporta la extensión completa de la capa. Para un
+ráster recortado es lo que quiere. Para un **mapa base remoto** —WMTS, XYZ,
+WMS— no: esas capas declaran extensión **mundial**, independientemente de lo
+que usted vea en el lienzo. Exportar «toda la capa» reparte entonces los
+píxeles pedidos entre 360° de longitud.
+
+Medido sobre un caso real, el basemap *Sentinel-2 cloudless* de EOX a 2048 px:
+
+| Área exportada | Resolución | Útil |
+|---|---|---|
+| Extensión de la capa (360° × 170°) | **19 568 m/píxel** | no — Turrialba ocupa menos de un píxel |
+| Un cuadrante de 0,1° sobre Turrialba | **5,4 m/píxel** | sí |
+
+El KMZ del primer caso es estructuralmente correcto —los cuatro niveles de la
+pirámide están, los 190 miembros resuelven— y aun así en Google Earth parece
+que la imagen no cargó, porque la imagen *está* ahí: mide un píxel. Por eso el
+registro informa ahora del área usada y de los **metros por píxel**, y avisa
+cuando se está exportando la capa completa y esta pasa de diez grados de lado.
+Ese número es el que dice si la exportación sirve antes de abrirla.
+
+Para acotarla, el diálogo trae los botones de siempre: «Usar extensión del
+lienzo del mapa» y «Dibujar en el lienzo».
+
 **Por dentro: un solo `doc.kml`.** El KMZ que sale lleva el documento
 directamente en `doc.kml`, sin archivos auxiliares. No es un detalle estético:
 el controlador LIBKML de GDAL, por omisión, escribe en `doc.kml` solo un
@@ -423,6 +447,7 @@ Copyright © 2026 Jorge Fallas <jfallas56@gmail.com>
 
 | Versión | Fecha | Cambios |
 |---|---|---|
+| 1.0.4 | 2026-10-07 | Nuevo «Ráster: área a exportar». Un mapa base remoto declara extensión mundial, así que exportarlo entero daba 19 km por píxel y en Earth parecía que no cargaba. Se informan los metros por píxel. |
 | 1.0.3 | 2026-10-07 | Solo documentación: se precisa la causa del cierre de 1.0.2 —la capa seleccionada en el panel de capas, no la versión— y se deja escrito que elegir un ráster lo habría cerrado igual. |
 | 1.0.2 | 2026-10-07 | «Campo de fecha» se pide escribiendo el nombre: como parámetro de campo colgado de una capa que puede ser ráster, abrir el diálogo cerraba QGIS (puntero nulo en QGIS, no en el complemento). |
 | 1.0.1 | 2026-10-07 | Corrección del KMZ vectorial: el documento pasa a `doc.kml` y se quita el enlace interno de LIBKML, que con tildes en el nombre de la capa no resolvía y dejaba el archivo vacío en Google Earth. |

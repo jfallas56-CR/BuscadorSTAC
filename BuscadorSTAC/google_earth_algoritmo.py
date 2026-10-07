@@ -41,9 +41,13 @@ LO QUE NO HACE
 
 Autor    : Jorge Fallas (jfallas56@gmail.com)
 Licencia : GPL v2 o posterior
-Versión  : 1.0.3
+Versión  : 1.0.4
 
 Historial:
+    1.0.4 (2026-10-07): «Ráster: área a exportar». Sin ella, un mapa
+        base remoto se exportaba entero —360° en 2048 px, 19 km por
+        píxel— y en Earth parecía que la imagen no cargaba. Se
+        informan los metros por píxel y se avisa del caso.
     1.0.2 (2026-10-07): «Campo de fecha» pasa a pedirse por nombre.
         Era un parámetro de campo colgado de un padre que puede ser
         ráster, y abrir el diálogo cerraba QGIS con una violación de
@@ -75,6 +79,7 @@ from qgis.core import (QgsCoordinateReferenceSystem,
                        QgsProcessingException,
                        QgsProcessingParameterBoolean,
                        QgsProcessingParameterEnum,
+                       QgsProcessingParameterExtent,
                        QgsProcessingParameterFileDestination,
                        QgsProcessingParameterMapLayer,
                        QgsProcessingParameterNumber,
@@ -90,8 +95,10 @@ from qgis.core import (QgsCoordinateReferenceSystem,
 
 from .buscar_sentinel2_algoritmo import AUTOR, AUTOR_EMAIL, _STR
 from .core import (TOPE_ENTIDADES_WEB, TOPE_VERTICES_WEB,
-                   capa_a_promover, contar_kml, fecha_kml,
-                   href_inseguro, insertar_opacidad_kml)
+                   capa_a_promover, contar_kml,
+                   extension_sospechosa, fecha_kml,
+                   href_inseguro, insertar_opacidad_kml,
+                   metros_por_pixel)
 
 try:
     from osgeo import gdal, ogr
@@ -110,10 +117,11 @@ FORMATOS_IMAGEN = ['PNG (conserva transparencia)', 'JPEG (menos peso)']
 class ExportarGoogleEarthAlgorithm(QgsProcessingAlgorithm):
     """Capa ráster o vectorial a KMZ, y abrirlo en Google Earth."""
 
-    VERSION = 'v1.0.3'
+    VERSION = 'v1.0.4'
 
     CAPA = 'CAPA'
     CAMPO_FECHA = 'CAMPO_FECHA'
+    EXTENSION = 'EXTENSION'
     NOMBRE = 'NOMBRE'
     PX_LADO = 'PX_LADO'
     FORMATO = 'FORMATO'
@@ -172,7 +180,15 @@ class ExportarGoogleEarthAlgorithm(QgsProcessingAlgorithm):
             "sus valores van de −1 a 1 y nadie los ha llevado a color.<br>"
             "Se genera un <i>super-overlay</i>: la imagen se parte en "
             "teselas con niveles de detalle, de modo que Earth carga solo "
-            "lo que hace falta al acercarse.<br><br>"
+            "lo que hace falta al acercarse.<br>"
+            "<b>Si la capa es un mapa base remoto —WMTS, XYZ, WMS— indique "
+            "«Ráster: área a exportar».</b> Esas capas declaran extensión "
+            "mundial, así que exportarlas enteras reparte los píxeles entre "
+            "360° de longitud: a 2048 px salen unos 19 km por píxel y el "
+            "sitio que quería ver no llega a ocupar uno, con lo que en "
+            "Earth parece que la imagen no cargó. El registro informa de "
+            "los metros por píxel y avisa si se está exportando la capa "
+            "completa.<br><br>"
             "<b>Vectorial</b><br>"
             "Se escribe con el controlador LIBKML, que conserva los "
             "atributos: en Earth se ven al pulsar cada elemento. Es la vía "
@@ -299,6 +315,23 @@ class ExportarGoogleEarthAlgorithm(QgsProcessingAlgorithm):
         p.setHelp(self.tr(
             'Lo que aparecerá en el panel «Lugares» de Google Earth. '
             'Vacío: se usa el nombre de la capa.'))
+        self.addParameter(p)
+
+        p = QgsProcessingParameterExtent(
+            self.EXTENSION,
+            self.tr('Ráster: área a exportar (vacío = toda la capa)'),
+            optional=True)
+        p.setHelp(self.tr(
+            'Déjelo vacío y se exporta la extensión completa de la capa. '
+            'Eso sirve para un ráster recortado, pero <b>no</b> para un '
+            'mapa base remoto —WMTS, XYZ, WMS—, porque esas capas declaran '
+            'extensión mundial: los píxeles pedidos se reparten entre 360° '
+            'de longitud y el sitio que quiere ver acaba ocupando menos de '
+            'un píxel.<br><br>'
+            'Para esos casos use los botones del propio diálogo: «Usar '
+            'extensión del lienzo del mapa» o «Dibujar en el lienzo». El '
+            'registro dice cuántos metros mide cada píxel, que es el número '
+            'con el que se sabe si la exportación sirve, antes de abrirla.'))
         self.addParameter(p)
 
         p = QgsProcessingParameterNumber(
@@ -484,12 +517,35 @@ class ExportarGoogleEarthAlgorithm(QgsProcessingAlgorithm):
         formato = 'PNG' if idx_fmt == 0 else 'JPEG'
 
         crs4326 = QgsCoordinateReferenceSystem('EPSG:4326')
-        ext = capa.extent()
+        ext_capa = capa.extent()
         if capa.crs() != crs4326:
             transformador = QgsCoordinateTransform(
                 capa.crs(), crs4326,
                 context.project() or QgsProject.instance())
-            ext = transformador.transformBoundingBox(ext)
+            ext_capa = transformador.transformBoundingBox(ext_capa)
+
+        # El área pedida manda; si no se pide, la capa entera. Hay que
+        # poder pedirla: un mapa base remoto declara extensión MUNDIAL,
+        # así que «toda la capa» reparte los píxeles entre 360° y el sitio
+        # que se quería ver no llega a ocupar uno.
+        de_la_capa = True
+        ext = ext_capa
+        if parameters.get(self.EXTENSION):
+            pedida = self.parameterAsExtent(parameters, self.EXTENSION,
+                                            context, crs4326)
+            if pedida is not None and not pedida.isEmpty():
+                recortada = pedida.intersect(ext_capa)
+                if recortada.isEmpty():
+                    raise QgsProcessingException(
+                        'El área pedida no toca la extensión de la capa '
+                        '«{n}», así que no hay nada que dibujar. La capa '
+                        'cubre N={N:.4f} S={S:.4f} E={E:.4f} W={W:.4f} en '
+                        'grados.'.format(
+                            n=capa.name(), N=ext_capa.yMaximum(),
+                            S=ext_capa.yMinimum(), E=ext_capa.xMaximum(),
+                            W=ext_capa.xMinimum()))
+                ext = recortada
+                de_la_capa = False
 
         # Lado mayor al máximo pedido, conservando la proporción.
         if ext.width() <= 0 or ext.height() <= 0:
@@ -503,6 +559,43 @@ class ExportarGoogleEarthAlgorithm(QgsProcessingAlgorithm):
             filas = int(px_lado)
             cols = max(1, int(round(px_lado * ext.width() / ext.height())))
         feedback.pushInfo(f'Imagen  : {cols} x {filas} px, {formato}')
+        feedback.pushInfo(
+            'Área    : N={N:.5f} S={S:.5f} E={E:.5f} W={W:.5f}  ({de})'
+            .format(N=ext.yMaximum(), S=ext.yMinimum(), E=ext.xMaximum(),
+                    W=ext.xMinimum(),
+                    de='extensión de la capa' if de_la_capa
+                       else 'área pedida'))
+
+        # El número que dice si esto sirve, ANTES de abrir Google Earth.
+        mx, my = metros_por_pixel(ext.xMinimum(), ext.yMinimum(),
+                                  ext.xMaximum(), ext.yMaximum(),
+                                  cols, filas)
+        if mx is not None:
+            feedback.pushInfo(
+                f'Resolución: {mx:,.1f} x {my:,.1f} m por píxel'
+                .replace(',', ' '))
+        if de_la_capa and extension_sospechosa(
+                ext.xMinimum(), ext.yMinimum(),
+                ext.xMaximum(), ext.yMaximum()):
+            proveedor = ''
+            try:
+                proveedor = capa.dataProvider().name() or ''
+            except Exception as e:
+                feedback.pushDebugInfo(f'[proveedor] {e}')
+            remoto = (' Es una capa «{p}», de un servicio remoto: su '
+                      'extensión declarada es la del servicio, no la de lo '
+                      'que usted ve en el lienzo.').format(p=proveedor) \
+                if proveedor in ('wms', 'wcs', 'xyz') else ''
+            feedback.pushWarning(
+                '[!] Se está exportando la extensión COMPLETA de la capa: '
+                '{a:.1f}° x {b:.1f}°, a {mx:,.0f} m por píxel.{r} Si lo que '
+                'quería era una zona concreta, cancele e indique «Ráster: '
+                'área a exportar» —el diálogo tiene botones para usar la '
+                'extensión del lienzo o dibujarla—; tal como va, el sitio '
+                'de interés puede ocupar menos de un píxel y en Google '
+                'Earth parecerá que la imagen no cargó.'
+                .format(a=ext.width(), b=ext.height(),
+                        mx=(mx or 0), r=remoto).replace(',', ' '))
 
         tmp_tif = destino[:-4] + '_render.tif'
         # El renderizador de la capa va DENTRO de la tubería: es lo que
@@ -932,11 +1025,26 @@ class ExportarGoogleEarthAlgorithm(QgsProcessingAlgorithm):
     def _avisar_contenido(self, kmz, feedback):
         """Cuenta entidades y vértices, y avisa de los topes de Earth Web."""
         texto = ''
+        piramide = 0
         try:
             if zipfile.is_zipfile(kmz):
                 with zipfile.ZipFile(kmz) as z:
                     kmls = [n for n in z.namelist()
                             if n.lower().endswith('.kml')]
+                    # Un super-overlay es una pirámide de teselas: decenas
+                    # de KML, uno por tesela, cada uno con su GroundOverlay.
+                    # Contarlos como «superposiciones» no dice nada, y leer
+                    # solo los cuatro primeros daba una cifra inventada
+                    # («3 superposiciones» de 95). Se informa de la
+                    # pirámide, que es lo que hay.
+                    piramide = len([n for n in kmls if n != 'doc.kml'])
+                    if piramide > 4:
+                        niveles = sorted({n.split('/')[0] for n in kmls
+                                          if '/' in n})
+                        feedback.pushInfo(
+                            f'Pirámide de teselas: {piramide} tesela(s) en '
+                            f'{len(niveles)} nivel(es) de zoom.')
+                        kmls = ['doc.kml'] if 'doc.kml' in kmls else kmls[:1]
                     for n in kmls[:4]:
                         texto += z.read(n).decode('utf-8', 'replace')
             else:

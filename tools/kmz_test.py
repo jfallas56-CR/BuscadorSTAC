@@ -61,7 +61,8 @@ def nota(texto):
     print(f'  nota  {texto}')
 
 
-def _raster_sintetico(ruta, bandas=1, tipo=None, epsg=4326):
+def _raster_sintetico(ruta, bandas=1, tipo=None, epsg=4326,
+                      caja=None):
     """GeoTIFF pequeño sobre Guanacaste, con valores de índice (-1 a 1).
 
     epsg=32616 reproduce lo que descarga el propio complemento: el recorte
@@ -76,7 +77,12 @@ def _raster_sintetico(ruta, bandas=1, tipo=None, epsg=4326):
     cols, filas = 60, 40
     drv = gdal.GetDriverByName('GTiff')
     ds = drv.Create(ruta, cols, filas, bandas, tipo)
-    if epsg == 4326:
+    if caja is not None:
+        # (oeste, sur, este, norte) explicitos, para el caso de una capa
+        # ancha a proposito.
+        w, s, e, n = caja
+        ds.SetGeoTransform([w, (e - w) / cols, 0.0, n, 0.0, -(n - s) / filas])
+    elif epsg == 4326:
         # Un grado de lado, en el Pacífico norte de Costa Rica.
         ds.SetGeoTransform([-85.8, 1.0 / cols, 0.0, 10.6, 0.0, -1.0 / filas])
     else:
@@ -261,6 +267,113 @@ def _probar_raster(etiqueta, ruta_tif, tmp, estilo=None):
 
     hay, motivo = _imagen_con_contenido(destino, imagenes, tmp)
     comp(f'{etiqueta}: la imagen del KMZ tiene contenido', hay, motivo)
+
+
+def _probar_area_pedida(tmp):
+    """«Área a exportar» tiene que mandar sobre la extensión de la capa.
+
+    El caso real: un basemap WMTS de EOX declara extensión MUNDIAL, asi
+    que exportar «toda la capa» repartio 2048 px entre 360 grados --19 568
+    m por pixel, medido-- y en Google Earth parecia que la imagen no habia
+    cargado. Aqui se comprueba con un raster normal que, pidiendo un
+    cuadrante, el KMZ cubre ESE cuadrante y no la capa entera, y que el
+    aviso de extension completa sale cuando toca.
+    """
+    from qgis.core import QgsRasterLayer, QgsRectangle
+    from BuscadorSTAC.core import extension_sospechosa, metros_por_pixel
+    from BuscadorSTAC.google_earth_algoritmo import (
+        ExportarGoogleEarthAlgorithm)
+
+    seccion('Raster: el area pedida manda sobre la extension de la capa')
+    # Capa ancha a proposito: 20 grados de lado, para que dispare el aviso.
+    tif = os.path.join(tmp, 'ancha.tif')
+    _raster_sintetico(tif, bandas=3, epsg=4326,
+                      caja=(-95.0, 0.0, -75.0, 20.0))
+    capa = QgsRasterLayer(tif, 'ancha')
+    if not comp('la capa ancha carga', capa.isValid()):
+        return
+
+    # 1. Sin area: tiene que avisar de que exporta la capa completa.
+    alg = ExportarGoogleEarthAlgorithm()
+    alg.initAlgorithm()
+    rec = _Recolector()
+    _r, ok, tb = _correr(alg, {
+        'CAPA': capa, 'NOMBRE': 'ancha', 'PX_LADO': 512, 'FORMATO': 0,
+        'OPACIDAD': 100, 'ABRIR': False,
+        'SALIDA': os.path.join(tmp, 'ancha_entera.kmz'),
+    }, rec)
+    if not comp('sin area pedida la exportacion termina sin error', ok,
+                (tb.strip().splitlines()[-1] if tb else _resumen(rec))):
+        return
+    todo = ' '.join(rec.info) + ' ' + ' '.join(rec.errores)
+    comp('avisa de que esta exportando la capa completa',
+         'extension COMPLETA' in todo or 'extensión COMPLETA' in todo,
+         'sin el aviso, 19 km por pixel pasan desapercibidos: ' + todo[-300:])
+    comp('informa de los metros por pixel',
+         'Resoluci' in todo, todo[-300:])
+
+    # 2. Con area: el KMZ tiene que cubrir ESO.
+    alg2 = ExportarGoogleEarthAlgorithm()
+    alg2.initAlgorithm()
+    destino = os.path.join(tmp, 'ancha_recorte.kmz')
+    rec2 = _Recolector()
+    pedida = QgsRectangle(-85.0, 9.0, -84.0, 10.0)
+    _r2, ok2, tb2 = _correr(alg2, {
+        'CAPA': capa, 'NOMBRE': 'recorte', 'PX_LADO': 512, 'FORMATO': 0,
+        'OPACIDAD': 100, 'ABRIR': False,
+        'EXTENSION': '%f,%f,%f,%f [EPSG:4326]' % (
+            pedida.xMinimum(), pedida.xMaximum(),
+            pedida.yMinimum(), pedida.yMaximum()),
+        'SALIDA': destino,
+    }, rec2)
+    if not comp('con area pedida la exportacion termina sin error', ok2,
+                (tb2.strip().splitlines()[-1] if tb2
+                 else _resumen(rec2))):
+        return
+    if not comp('el KMZ recortado existe', os.path.isfile(destino),
+                destino):
+        return
+
+    caja = _caja_nivel0(destino)
+    if not comp('se puede leer la caja del nivel 0 del KMZ', caja is not None,
+                'sin ella no se puede saber que area cubre'):
+        return
+    n, s, e, w = caja
+    cerca = (abs(w - pedida.xMinimum()) < 0.02
+             and abs(e - pedida.xMaximum()) < 0.02
+             and abs(s - pedida.yMinimum()) < 0.02
+             and abs(n - pedida.yMaximum()) < 0.02)
+    comp('el KMZ cubre el area pedida y no la capa entera', cerca,
+         'pedido W=%.3f S=%.3f E=%.3f N=%.3f; KMZ W=%.3f S=%.3f E=%.3f '
+         'N=%.3f' % (pedida.xMinimum(), pedida.yMinimum(),
+                     pedida.xMaximum(), pedida.yMaximum(), w, s, e, n))
+    comp('y el area pedida ya no dispara el aviso',
+         not extension_sospechosa(w, s, e, n),
+         'un grado de lado no es una extension sospechosa')
+    mx, _my = metros_por_pixel(w, s, e, n, 512, 512)
+    comp('la resolucion del recorte es util (< 500 m/px)',
+         mx is not None and mx < 500, f'{mx} m/px')
+
+
+def _caja_nivel0(kmz):
+    """(N, S, E, W) del nivel 0 de un super-overlay, o None."""
+    if not zipfile.is_zipfile(kmz):
+        return None
+    try:
+        with zipfile.ZipFile(kmz) as z:
+            l0 = [m for m in z.namelist()
+                  if m.startswith('0/') and m.endswith('.kml')]
+            if not l0:
+                l0 = [m for m in z.namelist() if m.endswith('.kml')]
+            if not l0:
+                return None
+            txt = z.read(sorted(l0)[0]).decode('utf-8', 'replace')
+    except (zipfile.BadZipFile, OSError, KeyError):
+        return None
+    g = re.search(r'<LatLonBox>.*?<north>([-\d.]+)</north>.*?'
+                  r'<south>([-\d.]+)</south>.*?<east>([-\d.]+)</east>.*?'
+                  r'<west>([-\d.]+)</west>', txt, re.S)
+    return tuple(float(x) for x in g.groups()) if g else None
 
 
 def _probar_vector(tmp):
@@ -540,6 +653,8 @@ def main():
         tif_utm = _raster_sintetico(os.path.join(tmp, 'utm.tif'),
                                     epsg=32616)
         _probar_raster('utm16n', tif_utm, tmp)
+
+        _probar_area_pedida(tmp)
 
         seccion('Vectorial, para contraste')
         _probar_vector(tmp)
