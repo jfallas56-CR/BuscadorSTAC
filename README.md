@@ -50,8 +50,8 @@ también en el menú Complementos → Buscador STAC.
 |---|---|
 | **Buscar y descargar Sentinel-2 / Landsat (STAC / COG)** | Consulta catálogos STAC públicos (Element84 Earth Search, Microsoft Planetary Computer). Capa de huellas con metadatos, hoja de contactos HTML, nubosidad medida dentro del AOI con SCL o QA_PIXEL, carga remota por `/vsicurl/` o recorte a disco, ocho composiciones RGB, diez índices espectrales y amplitud fenológica estacional. |
 | **Esri World Imagery / Wayback** | Imágenes de alta resolución, actuales e históricas (archivo Wayback desde 2014), recortadas al AOI. Detecta qué versiones cambian de verdad sobre el área y da la fecha de captura real, no la de publicación del mosaico. |
-| **Sentinel-1 RTC (ASF HyP3)** | Radar en banda C corregido por terreno, en tres modos: inventario por traza sin gastar créditos, pedido con confirmación explícita de gasto, y recogida con amplitud estacional de retrodispersión. |
-| **Exportar a Google Earth (KMZ)** | Convierte la capa elegida a KMZ y la abre en Google Earth de escritorio. Un ráster se renderiza antes con la simbología que usted ve en QGIS. |
+| **Sentinel-1 RTC (ASF HyP3)** | Radar en banda C corregido por terreno, en tres modos: inventario por traza sin gastar créditos, pedido con confirmación explícita de gasto y comprobación del saldo real, y colecta de datos con amplitud estacional de retrodispersión. Escribe la amplitud, las dos medianas por estación, el recuento por píxel y un informe HTML de auditoría; puede reproyectar los productos finales al SRC que se indique. |
+| **Exportar a Google Earth (KMZ)** | Convierte la capa elegida a KMZ y la abre en Google Earth de escritorio. Un ráster se renderiza antes con la simbología que usted ve en QGIS; a una capa vectorial se le puede dar un campo de fecha y sale con línea de tiempo. |
 
 El detalle de cada parámetro está en el panel de ayuda del propio diálogo, y la
 documentación de usuario completa en
@@ -74,7 +74,9 @@ BuscadorSTAC/            el complemento — es lo único que va en el ZIP
 tools/                   herramientas de desarrollo, NO se empaquetan
 ├── preflight.py         las comprobaciones que bloquean en el portal, en local
 ├── api_audit.py         cada símbolo de QGIS que usa el complemento
-└── smoke_test.py        arranca el complemento en un QGIS de verdad
+├── smoke_test.py        arranca el complemento en un QGIS de verdad
+├── kmz_test.py          exporta un KMZ y verifica imagen y línea de tiempo
+└── vsi_zip_test.py      lee un ZIP remoto por /vsizip/{/vsicurl/…}
 tests/                   pytest, sin QGIS
 .github/workflows/ci.yml
 requirements-dev.txt
@@ -155,8 +157,10 @@ En Windows, con OSGeo4W: `C:\OSGeo4W\bin\python-qgis-ltr.bat tools\api_audit.py`
   desnudos y ningún `# nosec` sin su código `B###`.
 - **qgis** — el complemento **dentro de las imágenes oficiales `qgis/qgis`**:
   3.28 fijada, LTR y estable actuales, y `latest`, que sigue a master para que
-  una QGIS nueva se rompa aquí antes de romperse para el usuario. Audita la API
-  y arranca el complemento con `xvfb-run`.
+  una QGIS nueva se rompa aquí antes de romperse para el usuario. Audita la
+  API, arranca el complemento con `xvfb-run`, lee un ZIP remoto de verdad por
+  `/vsizip/{/vsicurl/…}` y exporta un ráster y un vector a KMZ comprobando que
+  la imagen tenga contenido y que la línea de tiempo salga escrita.
 - **paquete** — construye el ZIP y lo sube como artefacto de la ejecución.
 
 ---
@@ -171,11 +175,21 @@ ejecute y reporte. Lo que hay aquí:
 | Lógica pura (fórmulas, parseo, KML, estimaciones) | `tests/test_core.py` | no |
 | Que preflight detecte los defectos | `tests/test_preflight.py` | no |
 | Ciclo de Processing, parámetros, validación | QGIS imitado, fuera del repo | no |
+| Que la ruta `/vsizip/{/vsicurl/…}` lea un ZIP remoto | `tools/vsi_zip_test.py` | no (solo GDAL) |
 | Que la API siga existiendo | `tools/api_audit.py` | sí |
 | Que el complemento cargue y registre | `tools/smoke_test.py` | sí |
+| Que la exportación a KMZ produzca imagen y línea de tiempo | `tools/kmz_test.py` | sí |
 
-Los dos últimos son los que no se pueden responder sin QGIS, y para eso existe
+Los tres últimos son los que no se pueden responder sin QGIS, y para eso existe
 el trabajo `qgis` de CI.
+
+`vsi_zip_test.py` levanta un servidor HTTP local y sirve un ZIP de verdad —
+incluido uno con más de 65 535 miembros, que fuerza el formato ZIP64, y uno
+servido por un servidor que rechaza `HEAD`. Es la prueba que faltaba cuando la
+colecta de radar devolvía 31 ZIP «abiertos pero vacíos»: la causa no estaba en
+el ZIP ni en la URL firmada, sino en `CPL_VSIL_CURL_ALLOWED_EXTENSIONS`, una
+lista blanca de GDAL que, sin `.zip`, hace que `VSIFOpenL` devuelva nulo **sin
+emitir ninguna petición HTTP y sin error**.
 
 ---
 

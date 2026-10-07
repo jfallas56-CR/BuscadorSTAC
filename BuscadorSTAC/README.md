@@ -115,9 +115,41 @@ resultados.
    marcar una casilla de confirmación y respeta un tope de créditos
    comprobado en el diálogo. Un envío fallido **no se reintenta**: si la
    petición llegó al servidor, repetirla gastaría los créditos dos veces.
-3. **Recogida** — repetible. Lee el manifiesto, consulta el estado, recorta
-   por `/vsicurl/` los productos listos y calcula la amplitud con recuento de
-   observaciones por píxel.
+2. **Pedido** — además comprueba el **saldo real** de créditos en HyP3
+   antes de enviar, no la asignación mensual: si no alcanza, dice cuánto
+   falta y a qué espaciamiento sí cabrían los mismos gránulos.
+3. **Colecta de datos** — repetible. Lee el manifiesto, consulta el estado,
+   recorta por `/vsicurl/` los productos listos y calcula la amplitud.
+
+**Qué escribe la colecta.**
+
+| Archivo | Qué es |
+|---|---|
+| `AMPL_…` | amplitud: mediana de seca − mediana de lluvia, en potencia |
+| `MEDSECA_…`, `MEDLLUV_…` | las dos medianas por separado |
+| `…_NOBS.tif` | observaciones válidas por píxel (banda 1 seca, banda 2 lluvia) |
+| `INFORME_<lote>.html` | informe de auditoría del lote |
+
+Las medianas no son decorativas: la amplitud sola no dice **sobre qué nivel**
+se mide. Una diferencia de 0,001 no significa lo mismo sobre un fondo de
+0,005 que sobre uno de 0,05. Llevan la misma máscara que la amplitud, de modo
+que restarlas da exactamente el ráster de amplitud.
+
+El informe HTML reúne lo que antes estaba repartido entre el manifiesto, los
+metadatos de cada GeoTIFF y el registro de QGIS —que no se guarda—:
+procedencia, parámetros del pedido, parámetros de la ejecución, fechas por
+estación, productos con sus estadísticos, entorno, fuentes y licencias. Es
+autocontenido, sin CDN ni fuentes remotas: un informe de auditoría se abre
+cuando hace falta, y entonces puede no haber red.
+
+**SRC de salida.** Los productos de HyP3 vienen en el UTM de la escena
+(EPSG:32616 o 32617 en Costa Rica) y el recorte lo conserva a propósito:
+reproyectar la retrodispersión antes de la mediana la remuestrearía 31 veces
+para un estadístico que no depende de la rejilla. Si indica un SRC de salida
+—CRTM05, EPSG:8908— se reproyectan los **productos finales** al terminar, por
+vecino más próximo, que conserva los valores medidos a cambio de hasta medio
+píxel de desplazamiento. El método queda escrito en los metadatos del
+archivo.
 
 **Créditos.** HyP3 Basic da 8 000 gratis al mes; un trabajo RTC cuesta 5
 créditos a 30 m, 15 a 20 m y 60 a 10 m. Una traza de un año a 10 m ronda los
@@ -143,7 +175,9 @@ Tres vías, probadas en orden:
 1. **Configuración de autenticación de QGIS** — recomendada. Base cifrada,
    protegida por la contraseña maestra; por el diálogo pasa solo un
    identificador de siete caracteres. Método *API Header*, clave
-   `Authorization`, valor `Bearer <token>`.
+   `Authorization`, valor `Bearer <token>`; también sirve el método *Básico*
+   con el token en el campo de contraseña. El prefijo `Bearer ` es opcional:
+   si falta se añade, y si está no se duplica.
 2. **Archivo de texto** cuya primera línea es el token. Sin contraseña
    maestra, pero el token queda en claro en el disco.
 3. **Variable de entorno** `EARTHDATA_TOKEN`, útil para `qgis_process`.
@@ -261,6 +295,18 @@ modo que Earth carga solo lo necesario al acercarse.
 **Lo vectorial** va por LIBKML y conserva los atributos, que en Earth se ven
 al pulsar cada elemento. Es la vía para llevarse la capa de huellas con su
 nubosidad y sus fechas.
+
+**Línea de tiempo.** Indicando un **campo de fecha** —en la capa de huellas,
+`fecha`— cada entidad sale con su `<TimeStamp>` y Google Earth muestra el
+control deslizante de tiempo: la serie se recorre o se acota a un intervalo
+en vez de verse toda encimada.
+
+Las fechas se normalizan a ISO 8601 antes de escribir, porque Earth ignora en
+silencio cualquier otra forma: el archivo abre, las entidades se ven y la
+línea de tiempo no aparece sin que nada lo explique. Se informa cuántas se
+entendieron y cuántas no. Un `03/01/2025` se rechaza a propósito —no se puede
+saber si es 3 de enero o 1 de marzo, y adivinarlo desplazaría la serie
+entera—; `2025/01/03` sí se acepta, porque empieza por el año.
 
 **Qué versión de Google Earth.** El KMZ lo leen todas: Earth Pro de
 escritorio, Earth Web y las apps móviles. Abrirlo automáticamente solo se

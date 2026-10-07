@@ -750,6 +750,28 @@ productos listos calcula la amplitud. Puede ejecutarlo varias veces: lo que
 aún no esté listo se informa y se vuelve a intentar más tarde.</li>
 </ol>
 
+<p><b>Qué escribe la colecta.</b></p>
+<ul>
+<li><code>AMPL_…</code> — la amplitud: mediana de seca menos mediana de
+lluvia, en potencia.</li>
+<li><code>MEDSECA_…</code> y <code>MEDLLUV_…</code> — las dos medianas por
+separado. La amplitud sola no dice sobre qué nivel se mide: una diferencia de
+0,001 no significa lo mismo sobre un fondo de 0,005 que sobre uno de 0,05.
+Llevan la misma máscara que la amplitud, así que restarlas da exactamente el
+ráster de amplitud.</li>
+<li><code>…_NOBS.tif</code> — observaciones válidas por píxel, banda 1 seca y
+banda 2 lluvia.</li>
+<li><code>INFORME_&lt;lote&gt;.html</code> — informe de auditoría: de dónde
+salió el dato, con qué parámetros se pidió, con cuáles se procesó, qué fechas
+entraron en cada estación y qué salió. Autocontenido, sin recursos remotos:
+se abre dentro de años y sin red.</li>
+</ul>
+
+<p>Todo sale en el SRC nativo del producto —el UTM de la escena, EPSG:32616 o
+32617 en Costa Rica— salvo que indique otro en «SRC de salida»: entonces los
+productos finales se reproyectan al terminar, por vecino más próximo para
+conservar los valores medidos.</p>
+
 <p><b>Cuenta y token.</b> Hace falta una cuenta gratuita de Earthdata Login y
 un token portador, que se genera en
 <i>urs.earthdata.nasa.gov → Generate Token</i>.</p>
