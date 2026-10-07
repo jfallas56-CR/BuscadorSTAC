@@ -19,7 +19,7 @@ Sentinel-1 RTC vía ASF HyP3 — amplitud estacional de retrodispersión
 ====================================================================
 
 Tercer algoritmo del complemento. Pide a ASF HyP3 productos Sentinel-1 RTC
-(corregidos radiométrica y geométricamente por terreno), los recoge cuando
+(corregidos radiométrica y geométricamente por terreno), los colecta cuando
 están listos y calcula la amplitud estacional seca − lluviosa sobre el AOI.
 
 Para qué sirve, frente al camino óptico que ya hace el primer algoritmo: el
@@ -180,7 +180,7 @@ NODATA_RESPALDO = 0.0
 MODOS = [
     "Inventario — qué hay sobre el AOI (no consume créditos)",
     "Pedir trabajos RTC a HyP3 (CONSUME créditos)",
-    "Recoger productos y calcular amplitud estacional",
+    "Colecta de datos: productos y amplitud estacional",
 ]
 
 ORBITAS = ["Cualquiera", "Ascendente", "Descendente"]
@@ -744,7 +744,7 @@ inventario y el pedido no pueden discrepar.</li>
 <i>manifiesto</i> JSON en la carpeta de salida. Consume créditos, así que
 exige marcar la casilla de confirmación. Los productos tardan: de minutos a
 horas según la cola.</li>
-<li><b>Recoger</b> — lee el manifiesto, consulta el estado, y con los
+<li><b>Colecta de datos</b> — lee el manifiesto, consulta el estado, y con los
 productos listos calcula la amplitud. Puede ejecutarlo varias veces: lo que
 aún no esté listo se informa y se vuelve a intentar más tarde.</li>
 </ol>
@@ -822,7 +822,7 @@ cualquier producto derivado.</p>
             'token, y le dice qué trazas hay y cuánto costaría cada una.<br>'
             '<b>Pedir trabajos</b> gasta créditos de verdad y es '
             'irreversible, por eso exige la casilla de confirmación.<br>'
-            '<b>Recoger</b> se puede repetir: los trabajos que aún no estén '
+            '<b>La colecta de datos</b> se puede repetir: los trabajos que aún no estén '
             'listos se informan y quedan para la siguiente vez.'))
         self.addParameter(p)
 
@@ -1018,12 +1018,12 @@ cualquier producto derivado.</p>
 
         p = QgsProcessingParameterFile(
             self.MANIFIESTO,
-            self.tr('Manifiesto de trabajos (solo modo recoger)'),
+            self.tr('Manifiesto de trabajos (solo para la colecta de datos)'),
             extension='json', optional=True)
         p.setHelp(self.tr(
             'El JSON que escribió el modo de pedido. Lleva los identificadores '
             'de los trabajos, la traza, el año y el espaciamiento, de modo que '
-            'la recogida no puede mezclar por accidente lo que se pidió por '
+            'la colecta de datos no puede mezclar por accidente lo que se pidió por '
             'separado.<br>'
             'NO contiene el token.'))
         self.addParameter(p)
@@ -1033,7 +1033,7 @@ cualquier producto derivado.</p>
             behavior=_FILE_FOLDER, optional=True)
         p.setHelp(self.tr(
             'Destino del manifiesto y de los GeoTIFF. Se exige en los modos de '
-            'pedido y de recogida.<br>'
+            'pedido y de colecta de datos.<br>'
             'La amplitud y el recuento de observaciones se escriben con la '
             'traza en el nombre, y con la procedencia completa dentro del '
             'GeoTIFF, legible con gdalinfo.'))
@@ -1076,7 +1076,7 @@ cualquier producto derivado.</p>
             token, origen = _obtener_clave(auth_id, ruta_clave)
             if not token:
                 return False, self.tr(
-                    f'[!] Los modos de pedido y de recogida necesitan el '
+                    f'[!] Los modos de pedido y de colecta de datos necesitan el '
                     f'token de Earthdata Login: {origen}. Genérelo gratis en '
                     f'urs.earthdata.nasa.gov → Generate Token y guárdelo en '
                     f'una «Configuración de autenticación de QGIS» (más '
@@ -1095,10 +1095,10 @@ cualquier producto derivado.</p>
                     f'urs.earthdata.nasa.gov → Generate Token y reemplace el '
                     f'contenido del archivo.')
 
-        # 3. Carpeta: pedido y recogida escriben a disco.
+        # 3. Carpeta: el pedido y la colecta de datos escriben a disco.
         if modo in (1, 2) and not carpeta:
             return False, self.tr(
-                '[!] Los modos de pedido y de recogida necesitan una «Carpeta '
+                '[!] Los modos de pedido y de colecta de datos necesitan una «Carpeta '
                 'de salida». Elíjala con el botón «…».')
         if carpeta:
             ok, motivo = self._carpeta_utilizable(carpeta)
@@ -1112,10 +1112,10 @@ cualquier producto derivado.</p>
         lluvia = _parsear_meses(
             self.parameterAsString(parameters, self.MESES_LLUVIA, context),
             ())
-        # Se valida en el modo de PEDIDO además del de recogida: el pedido es
+        # Se valida en el modo de PEDIDO además del de colecta de datos: el pedido es
         # el que gasta créditos, y unas estaciones mal declaradas producirían
         # un gasto irreversible sobre una configuración que no puede dar
-        # resultado. Descubrirlo al recoger sería tarde.
+        # resultado. Descubrirlo al colectar sería tarde.
         if modo in (1, 2):
             if not seca or not lluvia:
                 return False, self.tr(
@@ -1155,7 +1155,7 @@ cualquier producto derivado.</p>
                 parameters, self.MANIFIESTO, context) or '').strip()
             if not manifiesto:
                 return False, self.tr(
-                    '[!] El modo de recogida necesita el «Manifiesto de '
+                    '[!] La colecta de datos necesita el «Manifiesto de '
                     'trabajos» que escribió el modo de pedido.')
             if not os.path.isfile(manifiesto):
                 return False, self.tr(
@@ -1282,7 +1282,7 @@ cualquier producto derivado.</p>
             if estado == 'por_caducar':
                 feedback.pushWarning(
                     f"[!] El token {cuando}. Si el lote tarda más que eso, la "
-                    f"recogida fallará con 401 y habrá que renovarlo.")
+                    f"colecta de datos fallará con 401 y habrá que renovarlo.")
         carpeta = (self.parameterAsFile(parameters, self.CARPETA, context)
                    or '').strip()
         anio = self.parameterAsInt(parameters, self.ANIO, context)
@@ -1790,7 +1790,7 @@ cualquier producto derivado.</p>
                 f'trabajos desde HyP3 sin volver a gastar créditos.') from e
 
         # La ruta COMPLETA, no el nombre: el paso siguiente consiste en
-        # señalar este archivo en «Recoger», y con solo el nombre hay que
+        # señalar este archivo en «Colecta de datos», y con solo el nombre hay que
         # adivinar en qué carpeta quedó. El mensaje de error de más arriba
         # ya daba la ruta entera, de modo que fallar informaba mejor que
         # salir bien.
@@ -1798,7 +1798,7 @@ cualquier producto derivado.</p>
             f"\n{len(enviados)} trabajo(s) enviado(s). Manifiesto → {ruta}")
         feedback.pushInfo(
             "Los productos tardan de minutos a horas según la cola. Vuelva "
-            "con el modo «Recoger» e indique este manifiesto; puede "
+            "con el modo «Colecta de datos» e indique este manifiesto; puede "
             "ejecutarlo tantas veces como quiera.")
 
         # El saldo DESPUÉS de gastar, consultado y no calculado: es el
@@ -1814,7 +1814,7 @@ cualquier producto derivado.</p>
                 f"manifiesto.")
         return {self.SALIDA: carpeta}
 
-    # ---------------------------------------------------- modo 2: recoger
+    # -------------------------------------- modo 2: colecta de datos
     def _recoger(self, bbox, pol_idx, token, carpeta, parameters, context,
                  feedback):
         ruta_man = (self.parameterAsFile(
@@ -1857,15 +1857,15 @@ cualquier producto derivado.</p>
             feedback.pushWarning(
                 f"[!] «Filtro de speckle» está en {pedido_ahora} en el "
                 f"diálogo, pero este lote se pidió con {bool(filtro_man)} y "
-                f"eso ya está en el dato. En el modo de recogida ese "
+                f"eso ya está en el dato. En la colecta de datos ese "
                 f"parámetro no hace nada: para cambiarlo hay que volver a "
                 f"pedir los productos.")
 
         # El recorte usa el AOI que se PIDIÓ, guardado en el manifiesto, y no
-        # la extensión que haya en el diálogo ahora. Dos razones: la recogida
+        # la extensión que haya en el diálogo ahora. Dos razones: la cologida
         # se repite varias veces hasta que terminan todos los trabajos, y debe
         # dar el mismo encuadre cada vez; y los recortes de un lote comparten
-        # nombre, así que recoger dos veces con extensiones distintas dejaría
+        # nombre, así que colectar dos veces con extensiones distintas dejaría
         # los primeros archivos en su sitio —se dan por descargados— y la
         # serie mezclaría dos encuadres sin avisar.
         bbox_man = man.get('bbox_4326')
@@ -1885,7 +1885,7 @@ cualquier producto derivado.</p>
             feedback.pushWarning(
                 "[!] El manifiesto no guarda el AOI (lo escribió una versión "
                 "anterior del complemento): se usa la extensión del diálogo. "
-                "Manténgala igual entre recogidas del mismo lote.")
+                "Manténgala igual entre colectas del mismo lote.")
         feedback.pushInfo(
             f"  AOI de recorte: {bbox[0]:.5f}, {bbox[1]:.5f} … "
             f"{bbox[2]:.5f}, {bbox[3]:.5f}")
@@ -1933,7 +1933,7 @@ cualquier producto derivado.</p>
         pols = {0: ('VH',), 1: ('VV',), 2: ('VH', 'VV')}[pol_idx]
         # La marca identifica el LOTE en el nombre de cada recorte: traza,
         # dirección y espaciamiento. Dos lotes en la misma carpeta dejan de
-        # poder pisarse, que es lo que permite recoger varias trazas (o la
+        # poder pisarse, que es lo que permite colectar varias trazas (o la
         # misma a dos resoluciones) sin separar carpetas a mano.
         letra = {'ascending': 'A', 'descending': 'D'}.get(direccion, 'X')
         marca = f"S1_T{traza}{letra}_{res_m}m"
@@ -2016,10 +2016,10 @@ cualquier producto derivado.</p>
             feedback.pushInfo(
                 f"  {clave_ext} estaba en «{previo_ext}», que no permite "
                 f"abrir .zip por /vsicurl/. Se añade .zip mientras dure la "
-                f"recogida y se deja como estaba al terminar.")
+                f"colecta de datos y se deja como estaba al terminar.")
             self._avisos_informe.append(
                 f'{clave_ext} estaba en «{previo_ext}» y no permite abrir '
-                f'.zip por /vsicurl/. Se añadió .zip durante la recogida y '
+                f'.zip por /vsicurl/. Se añadió .zip durante la colecta de datos y '
                 f'se restauró al terminar; sin eso GDAL no abre ningún '
                 f'producto, en silencio.')
         try:
@@ -2116,7 +2116,7 @@ cualquier producto derivado.</p>
                     f'/vsicurl/ se niega a abrirlo SIN pedir nada al '
                     f'servidor y sin dar error. Es una opción de GDAL que '
                     f'se configura en QGIS: Configuración → Opciones → '
-                    f'GDAL. El complemento añade .zip mientras recoge; si '
+                    f'GDAL. El complemento añade .zip mientras colecta; si '
                     f've este mensaje, esa corrección no llegó a aplicarse.')
         try:
             pet = urllib.request.Request(_url_https(url))
@@ -2135,7 +2135,7 @@ cualquier producto derivado.</p>
                 return (f'{seguro}: HTTP {e.code}. El enlace venció o el '
                         f'objeto exige autenticación de Earthdata, que GDAL '
                         f'no le manda al leer por /vsicurl/. Vuelva a '
-                        f'ejecutar la recogida para pedir enlaces nuevos; si '
+                        f'ejecutar la colecta de datos para pedir enlaces nuevos; si '
                         f'sigue igual, el producto ya no es público.')
             if e.code == 404:
                 return (f'{seguro}: HTTP 404. El producto ya no está en el '
@@ -2694,8 +2694,8 @@ cualquier producto derivado.</p>
             return ruta
         meta['SRC_REPROYECTADO_A'] = str(destino_srs)
         meta['REMUESTREO_REPROYECCION'] = (
-            'vecino mas proximo: conserva los valores medidos, a cambio de '
-            'hasta medio pixel de desplazamiento geometrico')
+            'vecino más próximo: conserva los valores medidos, a cambio de '
+            'hasta medio píxel de desplazamiento geométrico')
         ds = gdal.Open(ruta, gdal.GA_Update)
         if ds is not None:
             ds.SetMetadata({k: str(v) for k, v in meta.items()})
@@ -2798,9 +2798,9 @@ cualquier producto derivado.</p>
                 meta_m['ESTADISTICO'] = f'mediana de la estacion {etiqueta}'
                 meta_m['MESES'] = ','.join(str(m) for m in sorted(meses))
                 meta_m['ENMASCARADO_COMO_LA_AMPLITUD'] = (
-                    'si: los pixeles sin MIN_OBS_POR_PIXEL en AMBAS '
+                    'sí: los píxeles sin MIN_OBS_POR_PIXEL en AMBAS '
                     'estaciones van a NaN, para que la resta de las dos '
-                    'medianas coincida con el raster de amplitud')
+                    'medianas coincida con el ráster de amplitud')
                 self._meter_meta(
                     ruta_m, meta_m,
                     f'MED_{sufijo} {etiqueta} (gamma0 potencia)')

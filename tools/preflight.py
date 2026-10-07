@@ -570,6 +570,109 @@ def _params_sin_ayuda(src, cuerpo):
     return res
 
 
+# Palabras cuya forma SIN tilde no es otra palabra valida en espanol.
+# Quedan fuera a proposito mas/mas, esta/esta, si/si, que/que, como/como y
+# solo/solo: son ambiguas y marcarlas llenaria el informe de ruido.
+_SIN_TILDE = {
+    'resolucion': 'resolución', 'parametro': 'parámetro',
+    'parametros': 'parámetros', 'ejecucion': 'ejecución',
+    'minimo': 'mínimo', 'maximo': 'máximo', 'estacion': 'estación',
+    'pixel': 'píxel', 'pixeles': 'píxeles', 'orbita': 'órbita',
+    'angulo': 'ángulo', 'auditoria': 'auditoría',
+    'descripcion': 'descripción', 'version': 'versión',
+    'informacion': 'información', 'configuracion': 'configuración',
+    'direccion': 'dirección', 'seleccion': 'selección',
+    'polarizacion': 'polarización', 'radiometria': 'radiometría',
+    'geometria': 'geometría', 'numero': 'número', 'analisis': 'análisis',
+    'invalido': 'inválido', 'tambien': 'también', 'aqui': 'aquí',
+    'asi': 'así', 'area': 'área', 'metodo': 'método',
+    'mascara': 'máscara', 'raster': 'ráster', 'rasteres': 'rásteres',
+    'dia': 'día', 'dias': 'días', 'seria': 'sería',
+    'deberia': 'debería', 'podria': 'podría', 'habria': 'habría',
+    'proximo': 'próximo', 'ultimo': 'último', 'unico': 'único',
+    'estadistico': 'estadístico', 'grafico': 'gráfico',
+    'limite': 'límite', 'credito': 'crédito', 'creditos': 'créditos',
+    'imagenes': 'imágenes', 'atencion': 'atención', 'sesion': 'sesión',
+    'tamano': 'tamaño', 'anios': 'años', 'granulo': 'gránulo',
+    'granulos': 'gránulos', 'valida': 'válida', 'validos': 'válidos',
+    'validas': 'válidas', 'despues': 'después', 'calculo': 'cálculo',
+}
+# Llamadas cuyo texto LEE el usuario.
+_UI = {'tr', 'setHelp', 'pushInfo', 'pushWarning', 'QgsProcessingException',
+       'setDescription'}
+
+
+def _lit_de(nodo):
+    """Constantes de texto de un argumento, SIN entrar en subindices.
+
+    Un c['creditos'] dentro de una f-string es una clave de diccionario,
+    no texto que lea nadie.
+    """
+    if isinstance(nodo, ast.Constant) and isinstance(nodo.value, str):
+        return [nodo]
+    if isinstance(nodo, ast.JoinedStr):
+        return [v for v in nodo.values
+                if isinstance(v, ast.Constant) and isinstance(v.value, str)]
+    if isinstance(nodo, ast.BinOp):
+        return _lit_de(nodo.left) + _lit_de(nodo.right)
+    return []
+
+
+def comp_tildes(inf):
+    """El texto que ve el usuario lleva sus tildes.
+
+    El complemento es de interfaz en espanol, y una etiqueta sin tilde se
+    ve en el dialogo tal cual. Se reporto dos veces a mano --«Resolucion»,
+    «Minimo», «Estacion», «Parametros de la ejecucion»-- antes de que
+    existiera esta comprobacion.
+
+    Solo mira texto de interfaz: etiquetas, ayudas, mensajes y las listas
+    de opciones. No mira comentarios ni nombres de variables, que son
+    codigo. Y respeta los limites de palabra: QA_PIXEL, raster:bands,
+    [_mascara_nubes] y {version} son nombres tecnicos y no se tocan.
+    """
+    inf.seccion('Tildes en el texto de la interfaz')
+    hallazgos = []
+    revisadas = 0
+    for archivo in sorted(os.listdir(DIR_PAQUETE)):
+        if not archivo.endswith('.py'):
+            continue
+        try:
+            arbol = ast.parse(_texto(os.path.join(DIR_PAQUETE, archivo)))
+        except SyntaxError:
+            continue
+        textos = []
+        for n in ast.walk(arbol):
+            if isinstance(n, ast.Call):
+                nom = getattr(n.func, 'id', getattr(n.func, 'attr', ''))
+                if nom in _UI:
+                    for arg in list(n.args) + [k.value for k in n.keywords]:
+                        textos.extend((a.lineno, a.value) for a in _lit_de(arg))
+            elif isinstance(n, ast.Assign) and isinstance(n.value, ast.List):
+                if getattr(n.targets[0], 'id', '').isupper():
+                    textos.extend(
+                        (a.lineno, a.value) for a in ast.walk(n.value)
+                        if isinstance(a, ast.Constant)
+                        and isinstance(a.value, str))
+        revisadas += len(textos)
+        for linea, texto in textos:
+            for m in re.finditer(r'[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+', texto):
+                pal, ini, fin = m.group(0), m.start(), m.end()
+                izq = texto[ini - 1] if ini else ' '
+                der = texto[fin] if fin < len(texto) else ' '
+                if izq in '_:{' or der in '_:}' or pal.isupper():
+                    continue
+                bien = _SIN_TILDE.get(pal.lower())
+                if bien:
+                    hallazgos.append(f'{archivo}:{linea} «{pal}» -> «{bien}»')
+
+    if not inf.comprobar(f'se revisaron {revisadas} cadena(s) de interfaz',
+                         revisadas > 0):
+        return
+    inf.comprobar('el texto de la interfaz lleva sus tildes', not hallazgos,
+                  '; '.join(sorted(set(hallazgos))[:12]))
+
+
 def comp_metodos_resueltos(inf):
     """Toda llamada self._foo() se resuelve en su PROPIA clase.
 
@@ -945,6 +1048,7 @@ def main(argv=None):
         comp_icono(z, inf)
     comp_sintaxis(inf)
     comp_ids_algoritmos(inf)
+    comp_tildes(inf)
     comp_metodos_resueltos(inf)
     comp_ayuda_parametros(inf)
     comp_escaneo(inf)

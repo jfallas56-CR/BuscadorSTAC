@@ -693,34 +693,34 @@ footer { margin-top: 2.5rem; color: #5a6570; font-size: .85rem;
 
 
 def informe_html(datos):
-    """Informe de auditoria de un lote, en HTML autocontenido.
+    """Informe de auditoría de un lote, en HTML autocontenido.
 
     Sin dependencias: ni plotly ni CDN ni fuentes remotas. Un informe de
-    auditoria tiene que poder abrirse dentro de diez anios y en una
-    maquina sin red, que es justo cuando hace falta.
+    auditoría tiene que poder abrirse dentro de diez años y en una
+    máquina sin red, que es justo cuando hace falta.
 
     Vive en core.py --y no en el algoritmo-- porque es construccion de
     texto y se prueba sin QGIS.
     """
     partes = [
         _tabla_html('Lote', datos.get('lote') or []),
-        _tabla_html('Parametros de la ejecucion', datos.get('parametros')
+        _tabla_html('Parámetros de la ejecución', datos.get('parametros')
                     or [],
-                    'Son los que gobiernan ESTE calculo. Los que fijo el '
+                    'Son los que gobiernan ESTE cálculo. Los que fijó el '
                     'pedido viajan dentro del dato y se listan arriba.'),
         _tabla_cols_html(
             'Productos escritos',
-            ('Producto', 'Archivo', 'Minimo', 'Maximo', 'Mediana',
+            ('Producto', 'Archivo', 'Mínimo', 'Máximo', 'Mediana',
              '% validos'),
             datos.get('productos') or [],
-            'La amplitud es la resta de las dos medianas, pixel a pixel. '
-            'Las tres llevan la misma mascara, de modo que la resta de los '
-            'dos rasteres de mediana coincide con el de amplitud.'),
-        _tabla_cols_html('Escenas usadas', ('Estacion', 'N', 'Fechas'),
+            'La amplitud es la resta de las dos medianas, píxel a píxel. '
+            'Las tres llevan la misma máscara, de modo que la resta de los '
+            'dos rásteres de mediana coincide con el de amplitud.'),
+        _tabla_cols_html('Escenas usadas', ('Estación', 'N', 'Fechas'),
                          datos.get('escenas') or [],
                          'Una escena por fecha y traza. Mezclar trazas '
-                         'invalidaria la serie: otra orbita relativa observa '
-                         'con otro angulo de incidencia.'),
+                         'invalidaría la serie: otra órbita relativa observa '
+                         'con otro ángulo de incidencia.'),
         _tabla_html('Entorno', datos.get('entorno') or []),
         _tabla_html('Fuentes y licencias', datos.get('fuentes') or []),
     ]
@@ -740,9 +740,9 @@ def informe_html(datos):
         f'{_esc(datos.get("generado_por"))}</p>\n'
         f'{avisos}'
         + ''.join(partes) +
-        '<footer>Informe de auditoria: registra con que datos y con que '
-        'parametros se produjo cada archivo, para poder repetirlo o '
-        'revisarlo mas tarde.</footer>\n'
+        '<footer>Informe de auditoría: registra con qué datos y con qué '
+        'parámetros se produjo cada archivo, para poder repetirlo o '
+        'revisarlo más tarde.</footer>\n'
         '</body>\n</html>\n')
 
 
@@ -759,7 +759,7 @@ def lista_con_zip(valor):
 
     Se AÑADE .zip en vez de vaciar la lista. La restriccion la puso el
     usuario o su instalacion, y vaciarla abriria /vsicurl/ a todo lo
-    demas mientras durase la recogida.
+    demás mientras durase la colecta de datos.
 
     Devuelve None cuando no hay nada que cambiar: lista vacia o sin
     definir ya significa «todo permitido», y si .zip ya esta, tampoco.
@@ -776,10 +776,10 @@ def lista_con_zip(valor):
 def opciones_asequibles(n_granulos, saldo):
     """[(espaciamiento, costo)] que caben en el saldo, de mas fino a menos.
 
-    Decir «no le alcanza» sin decir para que SI alcanza deja al usuario
+    Decir «no le alcanza» sin decir para qué SÍ alcanza deja al usuario
     calculandolo a mano, y el precio por escena no es lineal: 5, 15 y 60
-    creditos a 30, 20 y 10 m. Un saldo de 1630 no cubre 31 granulos a
-    10 m (1860) y si los cubre a 20 m (465), que no es evidente de
+    créditos a 30, 20 y 10 m. Un saldo de 1630 no cubre 31 gránulos a
+    10 m (1860) y sí los cubre a 20 m (465), que no es evidente de
     cabeza.
     """
     if saldo is None:

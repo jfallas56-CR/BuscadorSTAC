@@ -545,3 +545,30 @@ def test_un_atributo_asignado_en_self_no_es_un_huerfano(copia):
     assert not _dice(datos, 'self._metodo() existe en su clase'), (
         'el complemento tal cual no puede dar huerfanos: %r'
         % _bloqueantes(datos))
+
+
+# =====================================================================
+# Tildes. Se reportaron a mano dos veces --«Resolucion», «Minimo»,
+# «Estacion», «Parametros de la ejecucion»-- antes de que existiera la
+# comprobacion.
+# =====================================================================
+def test_detecta_una_etiqueta_sin_tilde(copia):
+    ruta = os.path.join(copia, PAQUETE, 'sentinel1_hyp3_algoritmo.py')
+    t = open(ruta, encoding='utf-8').read().replace(
+        "self.tr('Espaciamiento de píxel')",
+        "self.tr('Espaciamiento de pixel')", 1)
+    open(ruta, 'w', encoding='utf-8').write(t)
+    _, datos = _correr(copia)
+    assert _dice(datos, 'tildes'), _bloqueantes(datos)
+
+
+def test_no_marca_los_nombres_tecnicos(copia):
+    """QA_PIXEL, raster:bands y {version} no son prosa.
+
+    Una comprobacion que manda a «corregir» un nombre de banda de Landsat
+    se desactiva a la semana, y entonces no sirve para nada.
+    """
+    _, datos = _correr(copia)
+    assert not _dice(datos, 'tildes'), (
+        'el complemento tal cual no puede dar hallazgos de tilde: %r'
+        % _bloqueantes(datos))
