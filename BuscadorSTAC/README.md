@@ -1,6 +1,6 @@
 # Buscador STAC: Sentinel, Landsat y Esri Wayback
 
-![version](https://img.shields.io/badge/version-1.0.1-blue)
+![version](https://img.shields.io/badge/version-1.0.2-blue)
 ![QGIS](https://img.shields.io/badge/QGIS-%E2%89%A5%203.28-green)
 ![licencia](https://img.shields.io/badge/licencia-GPL%20v2%2B-orange)
 
@@ -296,10 +296,26 @@ modo que Earth carga solo lo necesario al acercarse.
 al pulsar cada elemento. Es la vía para llevarse la capa de huellas con su
 nubosidad y sus fechas.
 
-**Línea de tiempo.** Indicando un **campo de fecha** —en la capa de huellas,
-`fecha`— cada entidad sale con su `<TimeStamp>` y Google Earth muestra el
+**Línea de tiempo.** Escribiendo el nombre de un **campo de fecha** —en la
+capa de huellas, `fecha`— cada entidad sale con su `<TimeStamp>` y Google
+Earth muestra el
 control deslizante de tiempo: la serie se recorre o se acota a un intervalo
 en vez de verse toda encimada.
+
+**Por qué se escribe y no se elige de una lista.** Lo natural sería un
+desplegable con los campos de la capa, y así estaba. Pero un parámetro de campo
+de QGIS tiene que colgar de otro parámetro que le diga de qué capa sacar los
+nombres, y aquí ese parámetro acepta ráster **y** vectorial. En
+`QgsProcessingFieldWidgetWrapper::setParentLayerWrapperValue`, la rama de «una
+sola capa» hace `qobject_cast<QgsVectorLayer *>` y acto seguido llama a
+`layer->id()` sin comprobar el resultado: con un ráster el cast da `nullptr` y
+QGIS **se cierra con una violación de acceso**. La rama de «varias capas», justo
+encima, sí comprueba `vlayer && vlayer->isValid()`, y los envoltorios hermanos
+también — es un olvido, y sigue en `release-3_44` y en `master`. Como el widget
+se inicializa al construir el diálogo, bastaba con que la capa activa del
+proyecto fuese un ráster para que el diálogo no llegara a abrirse, lo que lo
+hacía parecer intermitente. Si escribe un nombre que no existe, el algoritmo se
+detiene y le dice qué campos tiene la capa.
 
 Las fechas se normalizan a ISO 8601 antes de escribir, porque Earth ignora en
 silencio cualquier otra forma: el archivo abre, las entidades se ven y la
@@ -394,6 +410,7 @@ Copyright © 2026 Jorge Fallas <jfallas56@gmail.com>
 
 | Versión | Fecha | Cambios |
 |---|---|---|
+| 1.0.2 | 2026-10-07 | «Campo de fecha» se pide escribiendo el nombre: como parámetro de campo colgado de una capa que puede ser ráster, abrir el diálogo cerraba QGIS (puntero nulo en QGIS, no en el complemento). |
 | 1.0.1 | 2026-10-07 | Corrección del KMZ vectorial: el documento pasa a `doc.kml` y se quita el enlace interno de LIBKML, que con tildes en el nombre de la capa no resolvía y dejaba el archivo vacío en Google Earth. |
 | 1.0.0 | 2026-10-02 | Primera versión pública. Cuatro algoritmos: búsqueda y descarga Sentinel-2 / Landsat por STAC y COG, Esri World Imagery / Wayback, Sentinel-1 RTC vía ASF HyP3, y exportación a Google Earth (KMZ). |
 

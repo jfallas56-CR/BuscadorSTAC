@@ -1,6 +1,6 @@
 # BuscadorSTAC
 
-![version](https://img.shields.io/badge/version-1.0.1-blue)
+![version](https://img.shields.io/badge/version-1.0.2-blue)
 ![QGIS](https://img.shields.io/badge/QGIS-3.28%20–%204.x-green)
 ![licencia](https://img.shields.io/badge/licencia-GPL%20v2%2B-blue)
 
@@ -51,7 +51,7 @@ también en el menú Complementos → Buscador STAC.
 | **Buscar y descargar Sentinel-2 / Landsat (STAC / COG)** | Consulta catálogos STAC públicos (Element84 Earth Search, Microsoft Planetary Computer). Capa de huellas con metadatos, hoja de contactos HTML, nubosidad medida dentro del AOI con SCL o QA_PIXEL, carga remota por `/vsicurl/` o recorte a disco, ocho composiciones RGB, diez índices espectrales y amplitud fenológica estacional. |
 | **Esri World Imagery / Wayback** | Imágenes de alta resolución, actuales e históricas (archivo Wayback desde 2014), recortadas al AOI. Detecta qué versiones cambian de verdad sobre el área y da la fecha de captura real, no la de publicación del mosaico. |
 | **Sentinel-1 RTC (ASF HyP3)** | Radar en banda C corregido por terreno, en tres modos: inventario por traza sin gastar créditos, pedido con confirmación explícita de gasto y comprobación del saldo real, y colecta de datos con amplitud estacional de retrodispersión. Escribe la amplitud, las dos medianas por estación, el recuento por píxel y un informe HTML de auditoría; puede reproyectar los productos finales al SRC que se indique. |
-| **Exportar a Google Earth (KMZ)** | Convierte la capa elegida a KMZ y la abre en Google Earth de escritorio. Un ráster se renderiza antes con la simbología que usted ve en QGIS; a una capa vectorial se le puede dar un campo de fecha y sale con línea de tiempo. |
+| **Exportar a Google Earth (KMZ)** | Convierte la capa elegida a KMZ y la abre en Google Earth de escritorio. Un ráster se renderiza antes con la simbología que usted ve en QGIS; a una capa vectorial se le puede indicar un campo de fecha y sale con línea de tiempo. |
 
 El detalle de cada parámetro está en el panel de ayuda del propio diálogo, y la
 documentación de usuario completa en
@@ -116,7 +116,12 @@ Corre en local las comprobaciones que bloquean una subida a
 plugins.qgis.org, para fallar aquí en vez de en el formulario. Sale con código
 distinto de cero si algo bloquea, de modo que sirve de puerta en CI.
 
-Entre otras cosas: el escaneo de Bandit que corre el portal; un `%` sin escapar
+Entre otras cosas: un parámetro de campo de Processing colgado de una capa que
+puede ser ráster, que **cierra QGIS** con una violación de acceso al abrir el
+diálogo —un puntero nulo sin comprobar en QGIS, presente en `release-3_44` y en
+`master`—, y que ninguna otra herramienta de aquí puede ver porque el archivo
+compila y el smoke test registra los algoritmos sin abrir sus diálogos; el
+escaneo de Bandit que corre el portal; un `%` sin escapar
 en `metadata.txt`, que hace que `configparser` lea mal ese campo **sin lanzar
 ninguna excepción**; credenciales pegadas en el código y rutas de la máquina de
 desarrollo en lo que se entrega; la coherencia de la versión en todos los
@@ -189,6 +194,16 @@ ejecute y reporte. Lo que hay aquí:
 
 Los tres últimos son los que no se pueden responder sin QGIS, y para eso existe
 el trabajo `qgis` de CI.
+
+**Lo que esto todavía no cubre, dicho claro:** nada de aquí abre el diálogo de
+un algoritmo. El smoke test registra los algoritmos y comprueba sus parámetros,
+pero construir el diálogo necesita `iface`, que solo existe en el QGIS de
+escritorio. Esa es exactamente la grieta por la que pasó el fallo de la versión
+1.0.2 —un parámetro mal emparentado que cierra QGIS en `postInitialize`— y por
+eso ese caso concreto se comprueba de forma estática en preflight, con una
+prueba que lo rompe a propósito y otra que verifica que el caso bueno no
+bloquea. Un diálogo que se abre de verdad sigue siendo cosa de probarlo en
+QGIS.
 
 `vsi_zip_test.py` levanta un servidor HTTP local y sirve un ZIP de verdad —
 incluido uno con más de 65 535 miembros, que fuerza el formato ZIP64, y uno

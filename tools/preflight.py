@@ -746,6 +746,88 @@ def comp_metodos_resueltos(inf):
                   'no se resuelven: ' + '; '.join(sorted(set(huerfanos))))
 
 
+def comp_padres_de_campo(inf):
+    """Ningun parametro de campo cuelga de un padre que pueda ser raster.
+
+    Esto no degrada el complemento: TUMBA QGIS. Violacion de acceso, sin
+    excepcion de Python que capturar, al CONSTRUIR el dialogo.
+
+    En QgsProcessingFieldWidgetWrapper::setParentLayerWrapperValue, la
+    rama de «una sola capa» hace
+
+        QgsVectorLayer *layer = qobject_cast<QgsVectorLayer *>(
+                                                 layers.at( 0 ) );
+        ... context->takeResultLayer( layer->id() ) ...
+
+    y si la capa del padre es un raster el qobject_cast da nullptr, de
+    modo que layer->id() desreferencia nulo. La rama de «varias capas»,
+    justo encima, si comprueba «vlayer && vlayer->isValid()», y los
+    envoltorios hermanos tambien: es un olvido de QGIS, comprobado en
+    release-3_44 y en master en octubre de 2026.
+
+    Lo pagamos: el parametro CAMPO_FECHA de la exportacion a Google Earth
+    colgaba de un QgsProcessingParameterMapLayer, que acepta las dos
+    cosas. postInitialize corre al abrir el dialogo, asi que bastaba con
+    que la capa activa del proyecto fuese un raster para que QGIS se
+    cerrara antes de que el usuario pudiera elegir nada -- y abria bien
+    si la activa era vectorial, lo que lo hacia parecer intermitente.
+
+    Ni py_compile, ni flake8, ni bandit, ni las baterias sin QGIS, ni el
+    smoke test lo ven: el smoke test registra los algoritmos, no abre sus
+    dialogos.
+
+    Seguro: QgsProcessingParameterFeatureSource y
+    QgsProcessingParameterVectorLayer. Inseguro: MapLayer, y cualquier
+    padre que no se encuentre en el mismo archivo.
+    """
+    inf.seccion('Padres de los parametros de campo')
+    seguros = {'QgsProcessingParameterFeatureSource',
+               'QgsProcessingParameterVectorLayer'}
+    hijos_con_padre = {'QgsProcessingParameterField',
+                       'QgsProcessingParameterExpression'}
+    malos, revisados = [], 0
+    for archivo in sorted(os.listdir(DIR_PAQUETE)):
+        if not archivo.endswith('.py'):
+            continue
+        try:
+            arbol = ast.parse(_texto(os.path.join(DIR_PAQUETE, archivo)))
+        except SyntaxError:
+            continue
+        tipos, hijos = {}, []
+        for nodo in ast.walk(arbol):
+            if not isinstance(nodo, ast.Call):
+                continue
+            f = nodo.func
+            nombre = (f.id if isinstance(f, ast.Name)
+                      else getattr(f, 'attr', ''))
+            if not nombre.startswith('QgsProcessingParameter'):
+                continue
+            clave = ''
+            if nodo.args and isinstance(nodo.args[0], ast.Attribute):
+                clave = nodo.args[0].attr
+            if clave:
+                tipos[clave] = nombre
+            if nombre not in hijos_con_padre:
+                continue
+            for kw in nodo.keywords:
+                if (kw.arg == 'parentLayerParameterName'
+                        and isinstance(kw.value, ast.Attribute)):
+                    hijos.append((clave, nombre, kw.value.attr,
+                                  nodo.lineno))
+        for clave, nombre, padre, linea in hijos:
+            revisados += 1
+            tipo_padre = tipos.get(padre)
+            if tipo_padre not in seguros:
+                malos.append(
+                    f'{archivo}:{linea} {clave} ({nombre}) cuelga de '
+                    f'{padre} ({tipo_padre or "declarado en otro archivo"})')
+
+    inf.comprobar(
+        f'los {revisados} parametro(s) con padre cuelgan de un padre '
+        f'vectorial', not malos,
+        'tumbaria QGIS al abrir el dialogo: ' + '; '.join(malos))
+
+
 def comp_ayuda_parametros(inf):
     """Todo parametro de Processing necesita setHelp().
 
@@ -1050,6 +1132,7 @@ def main(argv=None):
     comp_ids_algoritmos(inf)
     comp_tildes(inf)
     comp_metodos_resueltos(inf)
+    comp_padres_de_campo(inf)
     comp_ayuda_parametros(inf)
     comp_escaneo(inf)
     comp_version_coherente(g, inf)

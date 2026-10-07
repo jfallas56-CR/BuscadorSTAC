@@ -41,9 +41,13 @@ LO QUE NO HACE
 
 Autor    : Jorge Fallas (jfallas56@gmail.com)
 Licencia : GPL v2 o posterior
-Versión  : 1.0.1
+Versión  : 1.0.2
 
 Historial:
+    1.0.2 (2026-10-07): «Campo de fecha» pasa a pedirse por nombre.
+        Era un parámetro de campo colgado de un padre que puede ser
+        ráster, y abrir el diálogo cerraba QGIS con una violación de
+        acceso: puntero nulo sin comprobar en el propio QGIS.
     1.0.1 (2026-10-07): El KMZ vectorial se aplana para que el documento
         viva en doc.kml. LIBKML escribia el nombre de la capa en
         UTF-8 crudo sin el bit 11 del ZIP, y con tildes el enlace
@@ -71,7 +75,6 @@ from qgis.core import (QgsCoordinateReferenceSystem,
                        QgsProcessingException,
                        QgsProcessingParameterBoolean,
                        QgsProcessingParameterEnum,
-                       QgsProcessingParameterField,
                        QgsProcessingParameterFileDestination,
                        QgsProcessingParameterMapLayer,
                        QgsProcessingParameterNumber,
@@ -107,7 +110,7 @@ FORMATOS_IMAGEN = ['PNG (conserva transparencia)', 'JPEG (menos peso)']
 class ExportarGoogleEarthAlgorithm(QgsProcessingAlgorithm):
     """Capa ráster o vectorial a KMZ, y abrirlo en Google Earth."""
 
-    VERSION = 'v1.0.1'
+    VERSION = 'v1.0.2'
 
     CAPA = 'CAPA'
     CAMPO_FECHA = 'CAMPO_FECHA'
@@ -176,12 +179,16 @@ class ExportarGoogleEarthAlgorithm(QgsProcessingAlgorithm):
             "para llevarse la capa de huellas con su nubosidad y sus "
             "fechas.<br><br>"
             "<b>Línea de tiempo</b><br>"
-            "Si indica un «Campo de fecha», cada entidad sale con su "
-            "<code>&lt;TimeStamp&gt;</code> y Google Earth muestra el "
-            "control deslizante de tiempo: una serie de huellas se recorre "
-            "o se acota a un intervalo, en vez de verse toda encimada. En "
-            "la capa de huellas de este complemento el campo es "
-            "<code>fecha</code>.<br>"
+            "Si escribe el nombre de un campo en «Campo de fecha», cada "
+            "entidad sale con su <code>&lt;TimeStamp&gt;</code> y Google "
+            "Earth muestra el control deslizante de tiempo: una serie de "
+            "huellas se recorre o se acota a un intervalo, en vez de verse "
+            "toda encimada. En la capa de huellas de este complemento el "
+            "campo es <code>fecha</code>. Se escribe en vez de elegirse de "
+            "una lista porque un desplegable de campos obliga a declarar de "
+            "qué capa salen, y esta acepta ráster: en esa combinación QGIS "
+            "se cierra al abrir el diálogo. Si el nombre no existe, el "
+            "algoritmo se detiene y dice qué campos hay.<br>"
             "Las fechas se normalizan a ISO 8601 antes de escribir, porque "
             "Earth ignora en silencio cualquier otra forma: el archivo "
             "abre, las entidades se ven, y la línea de tiempo no aparece. "
@@ -217,18 +224,47 @@ class ExportarGoogleEarthAlgorithm(QgsProcessingAlgorithm):
             'atributos.'))
         self.addParameter(p)
 
-        p = QgsProcessingParameterField(
+        # Aquí había un QgsProcessingParameterField con
+        # parentLayerParameterName=CAPA, y ABRIR EL DIÁLOGO TUMBABA QGIS
+        # con una violación de acceso. No es cosa del complemento: es un
+        # puntero nulo sin comprobar en QGIS. En
+        # QgsProcessingFieldWidgetWrapper::setParentLayerWrapperValue, la
+        # rama de «una sola capa» hace
+        #
+        #     QgsVectorLayer *layer = qobject_cast<QgsVectorLayer *>(
+        #                                              layers.at( 0 ) );
+        #     ... context->takeResultLayer( layer->id() ) ...
+        #
+        # y si la capa del parámetro padre es un RÁSTER el qobject_cast
+        # devuelve nullptr, así que layer->id() desreferencia nulo. La
+        # rama de «varias capas», justo encima, sí comprueba
+        # «vlayer && vlayer->isValid()», y los envoltorios hermanos
+        # (banda, expresión) también: es un olvido, y sigue en master
+        # (comprobado en release-3_44 y en master, octubre de 2026).
+        #
+        # Como postInitialize corre al construir el diálogo, el cuelgue
+        # ocurre ANTES de que el usuario pueda elegir nada: basta con que
+        # la capa activa del proyecto sea un ráster. Por eso un día abre
+        # y otro no, sin que el complemento haya cambiado.
+        #
+        # Un parámetro de campo solo es seguro si su padre NO puede
+        # resolver a un ráster, y aquí tiene que poder. Así que el campo
+        # se pide por nombre y la validación hace el trabajo que hacía la
+        # lista: si no existe, se dicen los campos que sí hay.
+        p = QgsProcessingParameterString(
             self.CAMPO_FECHA,
             self.tr('Campo de fecha (pone la capa en la línea de tiempo)'),
-            parentLayerParameterName=self.CAPA, optional=True)
+            optional=True)
         p.setHelp(self.tr(
             'Solo para capas vectoriales. Si indica un campo con fechas, '
             'cada entidad sale con su <code>&lt;TimeStamp&gt;</code> y '
             'Google Earth muestra el control deslizante de tiempo: se puede '
             'recorrer la serie, o acotarla a un intervalo, en vez de ver '
             'todas las huellas encimadas.<br><br>'
-            'En la capa de huellas de este complemento el campo es '
-            '<code>fecha</code>.<br><br>'
+            'Escriba el <b>nombre</b> del campo. En la capa de huellas de '
+            'este complemento es <code>fecha</code>. Si lo escribe mal, '
+            'el algoritmo se detiene y le dice qué campos tiene la capa, '
+            'para que copie el que quiera.<br><br>'
             'Las fechas se normalizan a ISO 8601 antes de escribir, porque '
             'Google Earth ignora en silencio cualquier otra forma: el '
             'archivo abre, las entidades se ven y la línea de tiempo '
@@ -340,6 +376,33 @@ class ExportarGoogleEarthAlgorithm(QgsProcessingAlgorithm):
                 'reproyectar a WGS84, que es el único sistema que admite '
                 'KML. Asígnele su SRC real antes de exportar.'
             ).format(n=capa.name())
+
+        # El campo de fecha se escribe a mano (ver initAlgorithm: un
+        # parámetro de campo con padre ráster tumba QGIS), así que aquí se
+        # hace lo que haría la lista desplegable: comprobar que existe y,
+        # si no, decir cuáles hay.
+        campo = (self.parameterAsString(parameters, self.CAMPO_FECHA,
+                                        context) or '').strip()
+        if campo:
+            if not isinstance(capa, QgsVectorLayer):
+                return False, self.tr(
+                    '[!] «Campo de fecha» solo se aplica a capas '
+                    'vectoriales, y «{n}» es un ráster. Déjelo vacío.'
+                ).format(n=capa.name())
+            nombres = [f.name() for f in capa.fields()]
+            if campo not in nombres:
+                parecidos = [n for n in nombres
+                             if n.lower() == campo.lower()]
+                if parecidos:
+                    return False, self.tr(
+                        '[!] «{c}» no existe en «{n}», pero sí «{p}». Los '
+                        'nombres de campo distinguen mayúsculas.'
+                    ).format(c=campo, n=capa.name(), p=parecidos[0])
+                return False, self.tr(
+                    '[!] «{c}» no es un campo de «{n}». Los campos de esta '
+                    'capa son: {lista}.'
+                ).format(c=campo, n=capa.name(),
+                         lista=', '.join(nombres) or '(ninguno)')
 
         return super().checkParameterValues(parameters, context)
 

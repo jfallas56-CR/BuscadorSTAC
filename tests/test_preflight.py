@@ -572,3 +572,61 @@ def test_no_marca_los_nombres_tecnicos(copia):
     assert not _dice(datos, 'tildes'), (
         'el complemento tal cual no puede dar hallazgos de tilde: %r'
         % _bloqueantes(datos))
+
+
+def test_detecta_un_parametro_de_campo_colgado_de_un_raster(copia):
+    """El defecto que cerro QGIS entero, no que degrado el resultado.
+
+    Un QgsProcessingParameterField cuyo padre pueda resolver a raster
+    hace que QgsProcessingFieldWidgetWrapper desreferencie un puntero
+    nulo al ABRIR el dialogo. El complemento ya no tiene ninguno, asi que
+    sin esta prueba la comprobacion pasaria revisando cero parametros --
+    seguridad falsa.
+    """
+    ruta = os.path.join(copia, PAQUETE, 'google_earth_algoritmo.py')
+    fuente = open(ruta, encoding='utf-8').read()
+    ancla = '        p = QgsProcessingParameterString(\n            self.NOMBRE'
+    assert ancla in fuente, 'cambio el parametro de referencia de la prueba'
+    roto = fuente.replace(
+        ancla,
+        '        p = QgsProcessingParameterField(\n'
+        '            self.CAMPO_FECHA, self.tr(\'Campo\'),\n'
+        '            parentLayerParameterName=self.CAPA, optional=True)\n'
+        '        p.setHelp(self.tr(\'Campo de fecha.\'))\n'
+        '        self.addParameter(p)\n'
+        '\n' + ancla, 1)
+    open(ruta, 'w', encoding='utf-8').write(roto)
+
+    import ast as _ast
+    _ast.parse(roto)          # compila: por eso nada mas lo detecta
+
+    _, datos = _correr(copia)
+    assert _dice(datos, 'cuelgan de un padre vectorial'), (
+        'preflight tiene que bloquear: con la capa activa en raster, abrir '
+        'el dialogo cierra QGIS. Bloqueantes: %r' % _bloqueantes(datos))
+
+
+def test_un_padre_vectorial_no_da_falso_positivo(copia):
+    """Lo mismo pero colgado de un parametro vectorial: debe pasar."""
+    ruta = os.path.join(copia, PAQUETE, 'google_earth_algoritmo.py')
+    fuente = open(ruta, encoding='utf-8').read()
+    ancla = '        p = QgsProcessingParameterString(\n            self.NOMBRE'
+    assert ancla in fuente
+    sano = fuente.replace(
+        ancla,
+        '        p = QgsProcessingParameterVectorLayer(\n'
+        '            self.CAPA_V, self.tr(\'Capa vectorial\'))\n'
+        '        p.setHelp(self.tr(\'Capa vectorial.\'))\n'
+        '        self.addParameter(p)\n'
+        '        p = QgsProcessingParameterField(\n'
+        '            self.CAMPO_FECHA, self.tr(\'Campo\'),\n'
+        '            parentLayerParameterName=self.CAPA_V, optional=True)\n'
+        '        p.setHelp(self.tr(\'Campo de fecha.\'))\n'
+        '        self.addParameter(p)\n'
+        '\n' + ancla, 1)
+    open(ruta, 'w', encoding='utf-8').write(sano)
+
+    _, datos = _correr(copia)
+    assert not _dice(datos, 'cuelgan de un padre vectorial'), (
+        'un padre QgsProcessingParameterVectorLayer es seguro y no debe '
+        'bloquear. Bloqueantes: %r' % _bloqueantes(datos))
