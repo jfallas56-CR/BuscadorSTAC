@@ -129,6 +129,12 @@ propósito** una copia del complemento defecto por defecto y exigen que
 preflight lo bloquee. Una herramienta de verificación que nunca ha fallado no
 está probada: da seguridad falsa, que es peor que no tenerla.
 
+`tools/kmz_test.py` aplica la misma idea a su manera: después de comprobar que
+el KMZ con un nombre de capa en español se puede releer, escribe el mismo caso
+**sin** el arreglo y verifica que así no se pueda. Si algún día GDAL corrige el
+bit 11 del ZIP, ese control lo dirá —como nota, no como fallo: romper CI porque
+una dependencia mejoró no tendría sentido.
+
 ### `tools/api_audit.py`
 
 Recoge con AST cada símbolo de QGIS, Qt y GDAL que usa el complemento y
@@ -160,7 +166,8 @@ En Windows, con OSGeo4W: `C:\OSGeo4W\bin\python-qgis-ltr.bat tools\api_audit.py`
   una QGIS nueva se rompa aquí antes de romperse para el usuario. Audita la
   API, arranca el complemento con `xvfb-run`, lee un ZIP remoto de verdad por
   `/vsizip/{/vsicurl/…}` y exporta un ráster y un vector a KMZ comprobando que
-  la imagen tenga contenido y que la línea de tiempo salga escrita.
+  la imagen tenga contenido, que la línea de tiempo salga escrita y que el KMZ
+  se pueda releer con `ogr.Open` cuando la capa se llama en español.
 - **paquete** — construye el ZIP y lo sube como artefacto de la ejecución.
 
 ---
@@ -178,7 +185,7 @@ ejecute y reporte. Lo que hay aquí:
 | Que la ruta `/vsizip/{/vsicurl/…}` lea un ZIP remoto | `tools/vsi_zip_test.py` | no (solo GDAL) |
 | Que la API siga existiendo | `tools/api_audit.py` | sí |
 | Que el complemento cargue y registre | `tools/smoke_test.py` | sí |
-| Que la exportación a KMZ produzca imagen y línea de tiempo | `tools/kmz_test.py` | sí |
+| Que la exportación a KMZ produzca imagen, línea de tiempo y un archivo legible con tildes en el nombre de la capa | `tools/kmz_test.py` | sí |
 
 Los tres últimos son los que no se pueden responder sin QGIS, y para eso existe
 el trabajo `qgis` de CI.

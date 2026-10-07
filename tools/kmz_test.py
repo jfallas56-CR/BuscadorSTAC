@@ -56,6 +56,11 @@ def seccion(titulo):
     print(f'\n{titulo}')
 
 
+def nota(texto):
+    """Informa sin contar como comprobacion ni bloquear."""
+    print(f'  nota  {texto}')
+
+
 def _raster_sintetico(ruta, bandas=1, tipo=None, epsg=4326):
     """GeoTIFF pequeño sobre Guanacaste, con valores de índice (-1 a 1).
 
@@ -404,18 +409,73 @@ def _probar_nombre_con_tildes(capa, tmp):
     #    al de Google Earth que hay disponible sin Google Earth.
     try:
         from osgeo import ogr as _ogr
-        ds = _ogr.Open(destino)
-        if ds is None:
-            comp('GDAL abre el KMZ con tildes', False,
-                 'ogr.Open devolvio None: es el fallo que reporto el usuario')
-        else:
-            cap = ds.GetLayerCount()
-            ent = ds.GetLayer(0).GetFeatureCount() if cap else 0
-            comp('GDAL lee una capa con sus tres entidades',
-                 cap == 1 and ent == 3,
-                 f'{cap} capa(s), {ent} entidad(es)')
     except ImportError as e:
         comp('GDAL disponible para releer el KMZ', False, str(e))
+        return
+    ds = _ogr.Open(destino)
+    if ds is None:
+        comp('GDAL abre el KMZ con tildes', False,
+             'ogr.Open devolvio None: es el fallo que reporto el usuario')
+    else:
+        cap = ds.GetLayerCount()
+        ent = ds.GetLayer(0).GetFeatureCount() if cap else 0
+        comp('GDAL lee una capa con sus tres entidades',
+             cap == 1 and ent == 3, f'{cap} capa(s), {ent} entidad(es)')
+    ds = None
+
+    _control_negativo(rotulo, tmp)
+
+
+def _control_negativo(rotulo, tmp):
+    """Comprobar que la comprobacion anterior comprueba algo.
+
+    Una prueba que nunca ha fallado da seguridad falsa. Esta escribe el
+    MISMO nombre de capa con LIBKML y SIN aplanar, y mira si GDAL puede
+    leerlo. Si no puede, la prueba de arriba discrimina de verdad.
+
+    Si algun dia si puede, no es un fallo: significa que GDAL arreglo el
+    bit 11, y entonces el aplanado deja de hacer falta. Eso se informa,
+    no se bloquea — romper CI de alguien porque una dependencia mejoro
+    seria absurdo.
+    """
+    from osgeo import ogr as _ogr
+    from osgeo import osr as _osr
+
+    crudo = os.path.join(tmp, 'control_sin_aplanar.kmz')
+    try:
+        drv = _ogr.GetDriverByName('LIBKML')
+        if drv is None:
+            nota('control negativo omitido: este GDAL no trae LIBKML')
+            return
+        srs = _osr.SpatialReference()
+        srs.ImportFromEPSG(4326)
+        if hasattr(srs, 'SetAxisMappingStrategy'):
+            srs.SetAxisMappingStrategy(_osr.OAMS_TRADITIONAL_GIS_ORDER)
+        ds = drv.CreateDataSource(crudo)
+        lyr = ds.CreateLayer(rotulo, srs, _ogr.wkbPoint)
+        f = _ogr.Feature(lyr.GetLayerDefn())
+        f.SetGeometry(_ogr.CreateGeometryFromWkt('POINT(-85.8 10.6)'))
+        lyr.CreateFeature(f)
+        f = None
+        ds = None
+    except Exception as e:
+        # Amplio a proposito: esto es un control, no la prueba. Si no se
+        # puede escribir, se dice y se sigue; nunca debe tumbar la corrida.
+        nota(f'control negativo no se pudo escribir: {e}')
+        return
+
+    d = _ogr.Open(crudo)
+    capas = d.GetLayerCount() if d is not None else -1
+    if capas < 1:
+        comp('el control negativo confirma que la prueba discrimina',
+             True, '')
+        nota(f'sin aplanar, ogr.Open da {"None" if capas < 0 else "0 capas"}'
+             f' sobre «{rotulo}»: el aplanado es lo que arregla el KMZ')
+    else:
+        nota('ATENCION: este GDAL ya lee el KMZ de LIBKML con tildes sin '
+             'aplanarlo. El bit 11 del ZIP parece corregido; el aplanado '
+             'sigue siendo correcto pero ya no seria imprescindible. '
+             'Conviene revisar si se puede simplificar.')
 
 
 def _pseudocolor(capa):
