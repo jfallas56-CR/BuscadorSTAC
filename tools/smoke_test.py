@@ -117,6 +117,34 @@ def main():
                              if respaldo is not None and valor == respaldo
                              else ''))
 
+        seccion('Métodos de autenticación de QGIS')
+        # La ayuda del algoritmo de Sentinel-1 manda crear la
+        # configuración con el método «API Header». Si ese método no
+        # existiera en alguna versión soportada, la instrucción sería
+        # imposible de seguir justo donde el usuario no puede
+        # improvisar: la credencial.
+        try:
+            from qgis.core import QgsApplication as _App
+            gestor = _App.authManager()
+            claves = list(gestor.authMethodsKeys() or []) if gestor else []
+            if not claves:
+                from qgis.core import QgsAuthMethodRegistry
+                claves = list(
+                    QgsAuthMethodRegistry.instance().authMethodList() or [])
+            print(f'        métodos: {sorted(claves)}')
+            comp('existe el método «APIHeader» que indica la ayuda',
+                 any(str(k).lower().replace(' ', '') == 'apiheader'
+                     for k in claves),
+                 f'la ayuda manda usarlo para el token de Earthdata; '
+                 f'presentes: {sorted(claves)}')
+            comp('existe el método «Basic», que el código acepta como '
+                 'respaldo',
+                 any(str(k).lower() == 'basic' for k in claves),
+                 f'presentes: {sorted(claves)}')
+        except Exception:                                    # noqa: BLE001
+            comp('se pueden listar los métodos de autenticación', False,
+                 traceback.format_exc().strip().splitlines()[-1])
+
         seccion('Proveedor de Processing')
         prov_mod = modulos.get('buscar_sentinel2_provider')
         if prov_mod is None:

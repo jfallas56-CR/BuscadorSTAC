@@ -406,10 +406,11 @@ def _clave_desde_auth(auth_id):
             return valor, (f'configuración de autenticación «{auth_id}», '
                            f'campo «{clave}»')
     return '', (
-        f'la configuración «{auth_id}» existe pero no trae el token. Use el '
-        f'método «API Header» con la clave «Authorization» y el valor '
-        f'«Bearer <su token>». Claves presentes: '
-        f'{sorted(mapa) if mapa else "ninguna"}.')
+        f'la configuración «{auth_id}» existe pero no trae el token. Valen '
+        f'dos vías: el método «API Header» con la clave «Authorization», o '
+        f'el método «Básico» con el token en el campo de contraseña. El '
+        f'prefijo «Bearer » es opcional: se añade solo si falta. Claves '
+        f'presentes: {sorted(mapa) if mapa else "ninguna"}.')
 
 
 def _obtener_clave(auth_id, ruta):
@@ -763,7 +764,8 @@ para pedir ayuda. Hay tres vías, y se prueban en este orden:</p>
 <li><b>Configuración de autenticación de QGIS</b> — recomendada. Base cifrada,
 protegida por la contraseña maestra; por el diálogo pasa solo un
 identificador de siete caracteres. Método <b>API Header</b>, clave
-<code>Authorization</code>, valor <code>Bearer &lt;token&gt;</code>.</li>
+<code>Authorization</code>, valor <code>Bearer &lt;token&gt;</code>; también
+sirve el método <b>Básico</b> con el token en el campo de contraseña.</li>
 <li><b>Archivo de texto</b> cuya primera línea es el token. Más simple, sin
 contraseña maestra, pero el token queda en claro en el disco. En el registro
 aparece la ruta.</li>
@@ -840,7 +842,9 @@ cualquier producto derivado.</p>
             '<b>API Header</b> y añada una entrada con clave '
             '<code>Authorization</code> y valor <code>Bearer </code> seguido '
             'de su token. También se acepta el método <b>Básico</b> con el '
-            'token en el campo de contraseña.<br>'
+            'token en el campo de contraseña. El prefijo <code>Bearer </code> '
+            'es opcional en ambos casos: si falta se añade, y si está no se '
+            'duplica.<br>'
             'Si indica una configuración y falla, se avisa en vez de pasar en '
             'silencio al archivo: elegirla fue una decisión y un respaldo '
             'callado le dejaría creyendo que usó la vía cifrada.<br>'
