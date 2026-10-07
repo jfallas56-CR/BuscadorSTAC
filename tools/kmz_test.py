@@ -121,7 +121,13 @@ def _feedback(rec):
 def _resumen(rec):
     partes = []
     if rec.errores:
-        partes.append('reportError: ' + ' | '.join(rec.errores[-3:]))
+        # De cada error, la ULTIMA linea. reportError entrega el traceback
+        # entero en una sola cadena, y una anotacion de GitHub se corta en
+        # el primer salto: quedaba «Traceback (most recent call last):» y
+        # nada mas, que es justo la linea que no dice nada.
+        ultimas = [e.strip().splitlines()[-1]
+                   for e in rec.errores[-3:] if e.strip()]
+        partes.append('reportError: ' + ' | '.join(ultimas))
     if rec.info:
         partes.append('ultimo pushInfo: ' + rec.info[-1])
     return ' ;; '.join(partes) or '(el algoritmo no informo nada)'
