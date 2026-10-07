@@ -11,7 +11,7 @@ about=Cuatro algoritmos de Processing. El primero consulta catalogos STAC public
     El tercero trabaja Sentinel-1 RTC a traves de ASF HyP3, en tres modos: inventario por traza sin consumir creditos, pedido de trabajos RTC con confirmacion explicita de gasto, y colecta de datos con amplitud estacional de retrodispersion. La colecta escribe la amplitud, las DOS medianas por estacion --sin ellas no se sabe sobre que nivel se mide la diferencia--, el recuento de observaciones por pixel y un informe HTML de auditoria autocontenido, y puede reproyectar los productos finales al SRC que se indique, por ejemplo CRTM05. El radar no pierde datos por nube, que es justo la debilidad de la mediana de estacion lluviosa en el camino optico; en cambio responde a la humedad del suelo, asi que es un indicador confundido de otra manera y vale como contraste, no como sustituto. No se mezclan trazas: cada orbita relativa observa con otro angulo de incidencia, de modo que la traza va en el nombre del archivo.
     El cuarto exporta la capa elegida a KMZ y la abre en Google Earth. Un raster se RENDERIZA antes con la simbologia que se ve en QGIS, porque KML no guarda valores sino imagenes pegadas al terreno: volcar un GeoTIFF de NDVI sin renderizar daria una imagen gris ilegible. Lo vectorial va por LIBKML y conserva los atributos; indicando un campo de fecha, cada entidad sale con su TimeStamp y Google Earth muestra el control deslizante de tiempo, util para recorrer una serie de huellas en vez de verlas encimadas. El KMZ lo leen todas las versiones de Google Earth, pero abrirlo solo se puede automatizar en la de escritorio: Earth Web y las apps moviles no permiten que otra aplicacion les entregue un archivo, de modo que para esas el algoritmo deja el archivo y dice como importarlo.
     Datos: Copernicus Sentinel-1 y Sentinel-2 (ESA) y Landsat Collection 2 (USGS/NASA), de acceso abierto; productos RTC generados por ASF DAAC HyP3 con software GAMMA, que requiere una cuenta gratuita de Earthdata Login. Las imagenes de Esri NO son dato abierto: se rigen por el Esri Master License Agreement.
-version=1.0.2
+version=1.0.3
 author=Jorge Fallas
 email=jfallas56@gmail.com
 tracker=https://github.com/jfallas56-CR/BuscadorSTAC/issues
@@ -24,7 +24,18 @@ hasProcessingProvider=yes
 experimental=False
 deprecated=False
 server=False
-changelog=1.0.2 (2026-10-07) «Campo de fecha» se pide por nombre.
+changelog=1.0.3 (2026-10-07) Solo documentacion.
+    Se precisa la causa del cierre de 1.0.2, verificada en el codigo de
+    QGIS: lo que decidia era que capa estuviera seleccionada en el panel
+    de capas. ParametersPanel la pone en el contexto del widget y, como
+    «Capa a exportar» no es opcional ni trae valor por omision, QGIS la
+    preselecciona; postInitialize resuelve ese valor y entra en la rama
+    del cast. Y queda escrito que el mismo postInitialize conecta
+    widgetValueHasChanged, asi que ELEGIR un raster en el desplegable
+    tambien habria cerrado QGIS: hacer el parametro opcional o darle un
+    valor por omision NO era un arreglo.
+    
+    1.0.2 (2026-10-07) «Campo de fecha» se pide por nombre.
     Era un QgsProcessingParameterField colgado de un parametro que
     acepta raster y vectorial, y ABRIR EL DIALOGO cerraba QGIS con una
     violacion de acceso. La causa esta en QGIS, no aqui: en

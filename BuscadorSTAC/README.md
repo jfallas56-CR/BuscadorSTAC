@@ -1,6 +1,6 @@
 # Buscador STAC: Sentinel, Landsat y Esri Wayback
 
-![version](https://img.shields.io/badge/version-1.0.2-blue)
+![version](https://img.shields.io/badge/version-1.0.3-blue)
 ![QGIS](https://img.shields.io/badge/QGIS-%E2%89%A5%203.28-green)
 ![licencia](https://img.shields.io/badge/licencia-GPL%20v2%2B-orange)
 
@@ -311,11 +311,24 @@ sola capa» hace `qobject_cast<QgsVectorLayer *>` y acto seguido llama a
 `layer->id()` sin comprobar el resultado: con un ráster el cast da `nullptr` y
 QGIS **se cierra con una violación de acceso**. La rama de «varias capas», justo
 encima, sí comprueba `vlayer && vlayer->isValid()`, y los envoltorios hermanos
-también — es un olvido, y sigue en `release-3_44` y en `master`. Como el widget
-se inicializa al construir el diálogo, bastaba con que la capa activa del
-proyecto fuese un ráster para que el diálogo no llegara a abrirse, lo que lo
-hacía parecer intermitente. Si escribe un nombre que no existe, el algoritmo se
-detiene y le dice qué campos tiene la capa.
+también — es un olvido, y sigue en `release-3_44` y en `master`.
+
+Lo que decidía era **qué capa estuviera seleccionada en el panel de capas**, no
+la versión del complemento: `ParametersPanel` pone esa capa en el contexto del
+widget, y como «Capa a exportar» no es opcional ni trae valor por omisión,
+QGIS la **preselecciona**; después `postInitialize` resuelve ese valor y entra
+en la rama del cast. Con una capa vectorial seleccionada el diálogo abría; con
+un ráster, QGIS se cerraba. De ahí que pareciera intermitente.
+
+Y no era un emparejamiento frágil que bastara con afinar: el mismo
+`postInitialize` conecta `widgetValueHasChanged`, así que **elegir** un ráster
+en el desplegable lo habría cerrado igual, con el diálogo ya abierto. Que
+funcionara antes significa que no se había tropezado todavía. Por el mismo
+motivo, hacer el parámetro opcional o darle un valor por omisión no es un
+arreglo: evita la preselección, pero no el cierre al elegir.
+
+Si escribe un nombre que no existe, el algoritmo se detiene y le dice qué campos
+tiene la capa.
 
 Las fechas se normalizan a ISO 8601 antes de escribir, porque Earth ignora en
 silencio cualquier otra forma: el archivo abre, las entidades se ven y la
@@ -410,6 +423,7 @@ Copyright © 2026 Jorge Fallas <jfallas56@gmail.com>
 
 | Versión | Fecha | Cambios |
 |---|---|---|
+| 1.0.3 | 2026-10-07 | Solo documentación: se precisa la causa del cierre de 1.0.2 —la capa seleccionada en el panel de capas, no la versión— y se deja escrito que elegir un ráster lo habría cerrado igual. |
 | 1.0.2 | 2026-10-07 | «Campo de fecha» se pide escribiendo el nombre: como parámetro de campo colgado de una capa que puede ser ráster, abrir el diálogo cerraba QGIS (puntero nulo en QGIS, no en el complemento). |
 | 1.0.1 | 2026-10-07 | Corrección del KMZ vectorial: el documento pasa a `doc.kml` y se quita el enlace interno de LIBKML, que con tildes en el nombre de la capa no resolvía y dejaba el archivo vacío en Google Earth. |
 | 1.0.0 | 2026-10-02 | Primera versión pública. Cuatro algoritmos: búsqueda y descarga Sentinel-2 / Landsat por STAC y COG, Esri World Imagery / Wayback, Sentinel-1 RTC vía ASF HyP3, y exportación a Google Earth (KMZ). |

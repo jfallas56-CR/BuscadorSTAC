@@ -41,7 +41,7 @@ LO QUE NO HACE
 
 Autor    : Jorge Fallas (jfallas56@gmail.com)
 Licencia : GPL v2 o posterior
-Versión  : 1.0.2
+Versión  : 1.0.3
 
 Historial:
     1.0.2 (2026-10-07): «Campo de fecha» pasa a pedirse por nombre.
@@ -110,7 +110,7 @@ FORMATOS_IMAGEN = ['PNG (conserva transparencia)', 'JPEG (menos peso)']
 class ExportarGoogleEarthAlgorithm(QgsProcessingAlgorithm):
     """Capa ráster o vectorial a KMZ, y abrirlo en Google Earth."""
 
-    VERSION = 'v1.0.2'
+    VERSION = 'v1.0.3'
 
     CAPA = 'CAPA'
     CAMPO_FECHA = 'CAMPO_FECHA'
@@ -242,10 +242,28 @@ class ExportarGoogleEarthAlgorithm(QgsProcessingAlgorithm):
         # (banda, expresión) también: es un olvido, y sigue en master
         # (comprobado en release-3_44 y en master, octubre de 2026).
         #
-        # Como postInitialize corre al construir el diálogo, el cuelgue
-        # ocurre ANTES de que el usuario pueda elegir nada: basta con que
-        # la capa activa del proyecto sea un ráster. Por eso un día abre
-        # y otro no, sin que el complemento haya cambiado.
+        # Por qué se dispara al ABRIR, y por qué parecía intermitente.
+        # ParametersPanel pone en el contexto del widget la capa activa
+        # de la leyenda —setActiveLayer(iface.activeLayer())—; CAPA no es
+        # opcional y no trae defaultValue, así que
+        # QgsProcessingMapLayerWidgetWrapper::setWidgetContext la
+        # PRESELECCIONA; y acto seguido postInitialize resuelve ese valor
+        # y entra en la rama de arriba. O sea: lo que decide es qué capa
+        # está seleccionada en el panel de capas, no la versión del
+        # complemento. Con una vectorial el diálogo abre; con un ráster,
+        # QGIS se cierra.
+        #
+        # Y NO era un emparejamiento frágil que bastara con afinar: el
+        # mismo postInitialize conecta widgetValueHasChanged a
+        # setParentLayerWrapperValue, así que ELEGIR un ráster en el
+        # desplegable de la capa lo habría cerrado igual, con el diálogo
+        # ya abierto. Que funcionara antes significa que no se había
+        # tropezado todavía, no que fuese correcto.
+        #
+        # Corolario, para que nadie lo "arregle" por el camino corto:
+        # poner CAPA como opcional o darle un defaultValue evita la
+        # preselección y el diálogo abre —pero el cierre vuelve en cuanto
+        # el usuario elija el ráster. El emparejamiento es el defecto.
         #
         # Un parámetro de campo solo es seguro si su padre NO puede
         # resolver a un ráster, y aquí tiene que poder. Así que el campo
