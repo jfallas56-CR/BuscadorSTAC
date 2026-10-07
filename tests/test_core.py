@@ -1010,3 +1010,73 @@ def test_el_informe_es_html_completo():
     assert h.startswith('<!DOCTYPE html>')
     assert h.rstrip().endswith('</html>')
     assert 'lang="es"' in h
+
+
+# =====================================================================
+# fecha_kml. Google Earth solo pone en su línea de tiempo lo que venga
+# en ISO 8601; cualquier otra forma la ignora SIN avisar, que es el peor
+# fallo posible: el KMZ abre, las entidades se ven, y la línea de tiempo
+# no aparece sin que nada lo explique.
+# =====================================================================
+def test_acepta_la_fecha_de_la_capa_de_huellas():
+    """El campo «fecha» guarda los diez primeros del datetime STAC."""
+    assert core.fecha_kml('2025-01-03') == '2025-01-03'
+
+
+def test_acepta_iso_con_hora_y_zona():
+    assert core.fecha_kml('2025-01-03T11:31:17Z') == '2025-01-03T11:31:17Z'
+    assert (core.fecha_kml('2025-01-03T11:31:17+02:00')
+            == '2025-01-03T11:31:17+02:00')
+
+
+def test_el_espacio_de_qgis_se_vuelve_T():
+    """QGIS muestra «2025-01-03 11:31:17»; KML exige la T."""
+    assert core.fecha_kml('2025-01-03 11:31:17') == '2025-01-03T11:31:17'
+
+
+def test_no_inventa_zona_horaria():
+    """KML da por supuesto UTC si no hay zona; añadir «Z» afirmaría algo
+    que el dato no dice."""
+    assert not core.fecha_kml('2025-01-03 11:31:17').endswith('Z')
+
+
+def test_descarta_los_fraccionarios_de_segundo():
+    assert core.fecha_kml('2025-01-03T11:31:17.123456Z') == \
+        '2025-01-03T11:31:17Z'
+
+
+def test_rechaza_una_fecha_que_no_existe():
+    """El patrón acepta 2025-02-30; el calendario no."""
+    assert core.fecha_kml('2025-02-30') is None
+    assert core.fecha_kml('2025-13-01') is None
+
+
+def test_rechaza_el_formato_ambiguo():
+    """03/01/2025 puede ser 3 de enero o 1 de marzo.
+
+    Adivinar desplazaría la serie entera, y en silencio: es mejor no
+    poner <TimeStamp> en esa entidad y decir cuántas quedaron fuera.
+    """
+    assert core.fecha_kml('03/01/2025') is None
+
+
+def test_acepta_la_barra_cuando_el_orden_es_inequivoco():
+    """2025/01/03 empieza por el año: no hay nada que adivinar."""
+    assert core.fecha_kml('2025/01/03') == '2025-01-03'
+
+
+def test_rechaza_horas_imposibles():
+    assert core.fecha_kml('2025-01-03T25:00:00') is None
+    assert core.fecha_kml('2025-01-03T10:75:00') is None
+
+
+def test_acepta_objetos_date_y_datetime():
+    import datetime as dt
+    assert core.fecha_kml(dt.date(2025, 1, 3)) == '2025-01-03'
+    assert (core.fecha_kml(dt.datetime(2025, 1, 3, 11, 31, 17))
+            == '2025-01-03T11:31:17')
+
+
+def test_vacio_y_basura_dan_none():
+    for v in (None, '', '   ', 'hola', 'NULL', 0):
+        assert core.fecha_kml(v) is None, repr(v)

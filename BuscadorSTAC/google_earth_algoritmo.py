@@ -54,15 +54,19 @@ import logging
 import os
 import zipfile
 
-from qgis.PyQt.QtCore import QCoreApplication, QUrl
+from qgis.PyQt.QtCore import QCoreApplication, QDate, QDateTime, Qt, QUrl
 from qgis.PyQt.QtGui import QDesktopServices
 
 from qgis.core import (QgsCoordinateReferenceSystem,
                        QgsCoordinateTransform,
+                       QgsFeature,
+                       QgsField,
+                       QgsFields,
                        QgsProcessingAlgorithm,
                        QgsProcessingException,
                        QgsProcessingParameterBoolean,
                        QgsProcessingParameterEnum,
+                       QgsProcessingParameterField,
                        QgsProcessingParameterFileDestination,
                        QgsProcessingParameterMapLayer,
                        QgsProcessingParameterNumber,
@@ -73,11 +77,12 @@ from qgis.core import (QgsCoordinateReferenceSystem,
                        QgsRasterPipe,
                        QgsRasterProjector,
                        QgsVectorFileWriter,
-                       QgsVectorLayer)
+                       QgsVectorLayer,
+                       QgsWkbTypes)
 
-from .buscar_sentinel2_algoritmo import AUTOR, AUTOR_EMAIL
+from .buscar_sentinel2_algoritmo import AUTOR, AUTOR_EMAIL, _STR
 from .core import (TOPE_ENTIDADES_WEB, TOPE_VERTICES_WEB,
-                   contar_kml, insertar_opacidad_kml)
+                   contar_kml, fecha_kml, insertar_opacidad_kml)
 
 try:
     from osgeo import gdal, ogr
@@ -99,6 +104,7 @@ class ExportarGoogleEarthAlgorithm(QgsProcessingAlgorithm):
     VERSION = 'v1.0.0'
 
     CAPA = 'CAPA'
+    CAMPO_FECHA = 'CAMPO_FECHA'
     NOMBRE = 'NOMBRE'
     PX_LADO = 'PX_LADO'
     FORMATO = 'FORMATO'
@@ -192,6 +198,28 @@ class ExportarGoogleEarthAlgorithm(QgsProcessingAlgorithm):
             'Acepta las dos cosas. Un ráster se renderiza con su '
             'simbología actual; una capa vectorial se escribe con sus '
             'atributos.'))
+        self.addParameter(p)
+
+        p = QgsProcessingParameterField(
+            self.CAMPO_FECHA,
+            self.tr('Campo de fecha (pone la capa en la línea de tiempo)'),
+            parentLayerParameterName=self.CAPA, optional=True)
+        p.setHelp(self.tr(
+            'Solo para capas vectoriales. Si indica un campo con fechas, '
+            'cada entidad sale con su <code>&lt;TimeStamp&gt;</code> y '
+            'Google Earth muestra el control deslizante de tiempo: se puede '
+            'recorrer la serie, o acotarla a un intervalo, en vez de ver '
+            'todas las huellas encimadas.<br><br>'
+            'En la capa de huellas de este complemento el campo es '
+            '<code>fecha</code>.<br><br>'
+            'Las fechas se normalizan a ISO 8601 antes de escribir, porque '
+            'Google Earth ignora en silencio cualquier otra forma: el '
+            'archivo abre, las entidades se ven y la línea de tiempo '
+            'sencillamente no aparece. Se admiten <code>AAAA-MM-DD</code>, '
+            '<code>AAAA-MM-DD hh:mm:ss</code>, ISO con zona horaria y los '
+            'campos de tipo fecha. Un <code>03/01/2025</code> se rechaza a '
+            'propósito: no se puede saber si es 3 de enero o 1 de marzo, y '
+            'adivinarlo desplazaría la serie entera.'))
         self.addParameter(p)
 
         p = QgsProcessingParameterString(
@@ -323,8 +351,10 @@ class ExportarGoogleEarthAlgorithm(QgsProcessingAlgorithm):
             self._exportar_raster(capa, destino, rotulo, parameters, context,
                                   feedback)
         else:
-            destino = self._exportar_vector(capa, destino, rotulo, context,
-                                            feedback)
+            destino = self._exportar_vector(
+                capa, destino, rotulo, context, feedback,
+                campo_fecha=self.parameterAsString(
+                    parameters, self.CAMPO_FECHA, context))
 
         if not os.path.exists(destino):
             raise QgsProcessingException(
@@ -572,7 +602,73 @@ class ExportarGoogleEarthAlgorithm(QgsProcessingAlgorithm):
                 f'El KMZ se corrompió al reescribirlo con la opacidad: {e}')
 
     # --- vectorial ------------------------------------------------------
-    def _exportar_vector(self, capa, destino, rotulo, context, feedback):
+    def _con_timestamp(self, capa, campo, feedback):
+        """Copia en memoria con un campo «timestamp» en ISO 8601.
+
+        LIBKML escribe <TimeStamp> desde un campo llamado así, y eso es
+        lo que enciende el control de tiempo de Google Earth.
+
+        Se NORMALIZA en una copia en vez de apuntar el controlador al
+        campo original con LIBKML_TIMESTAMP_FIELD, que sería más barato,
+        porque Google Earth ignora en silencio cualquier forma que no sea
+        ISO 8601: el KMZ abriría, las entidades se verían, y la línea de
+        tiempo no aparecería sin que nada lo explique. Pasar por aquí
+        permite además CONTAR cuántas fechas se entendieron y decirlo.
+
+        Si la capa ya traía un campo «timestamp», la copia lo sustituye:
+        es el nombre que el controlador interpreta, y dejar los dos haría
+        que el resultado dependiera del orden de los campos.
+        """
+        idx = capa.fields().indexOf(campo)
+        if idx < 0:
+            feedback.pushWarning(
+                f'[!] La capa no tiene el campo «{campo}»; se exporta sin '
+                f'línea de tiempo.')
+            return capa, 0, 0
+
+        campos = QgsFields()
+        for f in capa.fields():
+            if f.name() != 'timestamp':
+                campos.append(f)
+        campos.append(QgsField('timestamp', _STR))
+
+        tipo = QgsWkbTypes.displayString(capa.wkbType()) or 'Polygon'
+        mem = QgsVectorLayer(f'{tipo}?crs={capa.crs().authid()}',
+                             capa.name(), 'memory')
+        if not mem.isValid():
+            feedback.pushWarning(
+                '[!] No se pudo preparar la capa temporal para la línea de '
+                'tiempo; se exporta sin ella.')
+            return capa, 0, 0
+        mem.dataProvider().addAttributes(list(campos))
+        mem.updateFields()
+
+        # La selección se resuelve AQUÍ: la copia no la hereda, y dejar
+        # que el escritor la aplicase después exportaría la capa entera.
+        origen = (capa.getSelectedFeatures() if capa.selectedFeatureCount()
+                  else capa.getFeatures())
+        nombres = [c.name() for c in mem.fields()]
+        nuevas, con_fecha, sin_fecha = [], 0, 0
+        for f in origen:
+            valor = f[campo]
+            if isinstance(valor, (QDate, QDateTime)):
+                valor = valor.toString(Qt.ISODate)
+            iso = fecha_kml(valor)
+            if iso:
+                con_fecha += 1
+            else:
+                sin_fecha += 1
+            nf = QgsFeature(mem.fields())
+            nf.setGeometry(f.geometry())
+            nf.setAttributes([iso if n == 'timestamp' else f[n]
+                              for n in nombres])
+            nuevas.append(nf)
+        mem.dataProvider().addFeatures(nuevas)
+        mem.updateExtents()
+        return mem, con_fecha, sin_fecha
+
+    def _exportar_vector(self, capa, destino, rotulo, context, feedback,
+                         campo_fecha=''):
         """LIBKML si está; si no, KML y archivo .kml. Devuelve la ruta real.
 
         Solo LIBKML escribe KMZ. El controlador KML antiguo escribe .kml a
@@ -582,6 +678,28 @@ class ExportarGoogleEarthAlgorithm(QgsProcessingAlgorithm):
         sobre el archivo, no sobre el controlador.
         """
         feedback.pushInfo(f'Entidades: {capa.featureCount()}')
+
+        usa_copia = False
+        if campo_fecha:
+            capa, con_fecha, sin_fecha = self._con_timestamp(
+                capa, campo_fecha, feedback)
+            usa_copia = bool(con_fecha or sin_fecha)
+            if usa_copia:
+                feedback.pushInfo(
+                    f'Línea de tiempo: {con_fecha} entidad(es) con fecha '
+                    f'utilizable en «{campo_fecha}».')
+            if sin_fecha:
+                feedback.pushWarning(
+                    f'[!] {sin_fecha} entidad(es) sin fecha interpretable en '
+                    f'«{campo_fecha}»: salen sin <TimeStamp> y Google Earth '
+                    f'las muestra siempre, fuera del control de tiempo. Se '
+                    f'admite ISO 8601 (AAAA-MM-DD); una fecha como '
+                    f'03/01/2025 se rechaza porque no se puede saber si es '
+                    f'3 de enero o 1 de marzo.')
+            if con_fecha == 0 and sin_fecha:
+                feedback.pushWarning(
+                    f'[!] NINGUNA fecha de «{campo_fecha}» se pudo '
+                    f'interpretar, así que no habrá línea de tiempo.')
 
         hay_libkml = bool(ogr and ogr.GetDriverByName('LIBKML'))
         if hay_libkml:
@@ -603,7 +721,7 @@ class ExportarGoogleEarthAlgorithm(QgsProcessingAlgorithm):
             capa.crs(), QgsCoordinateReferenceSystem('EPSG:4326'),
             context.project() or QgsProject.instance())
         opciones.layerName = rotulo
-        if capa.selectedFeatureCount():
+        if capa.selectedFeatureCount() and not usa_copia:
             feedback.pushInfo(
                 f'Se exportan solo las {capa.selectedFeatureCount()} '
                 f'entidades seleccionadas.')

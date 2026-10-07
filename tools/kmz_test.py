@@ -257,17 +257,23 @@ def _probar_vector(tmp):
     from BuscadorSTAC.google_earth_algoritmo import (
         ExportarGoogleEarthAlgorithm)
 
+    # Imita la capa de huellas: campo «fecha» con los diez primeros del
+    # datetime de STAC, y una entidad con fecha ilegible a proposito.
     capa = QgsVectorLayer(
-        'Polygon?crs=EPSG:4326&field=nombre:string', 'poligono', 'memory')
-    f = QgsFeature(capa.fields())
-    f.setGeometry(QgsGeometry.fromPolygonXY([[
-        QgsPointXY(-85.8, 10.6), QgsPointXY(-85.7, 10.6),
-        QgsPointXY(-85.7, 10.5), QgsPointXY(-85.8, 10.5),
-        QgsPointXY(-85.8, 10.6)]]))
-    f.setAttribute('nombre', 'AOI')
-    capa.dataProvider().addFeatures([f])
-    comp('vector: la capa en memoria tiene una entidad',
-         capa.featureCount() == 1)
+        'Polygon?crs=EPSG:4326&field=nombre:string&field=fecha:string',
+        'poligono', 'memory')
+    for nombre, fecha in (('AOI-1', '2025-01-03'), ('AOI-2', '2025-07-14'),
+                          ('AOI-3', 'sin fecha')):
+        f = QgsFeature(capa.fields())
+        f.setGeometry(QgsGeometry.fromPolygonXY([[
+            QgsPointXY(-85.8, 10.6), QgsPointXY(-85.7, 10.6),
+            QgsPointXY(-85.7, 10.5), QgsPointXY(-85.8, 10.5),
+            QgsPointXY(-85.8, 10.6)]]))
+        f.setAttribute('nombre', nombre)
+        f.setAttribute('fecha', fecha)
+        capa.dataProvider().addFeatures([f])
+    comp('vector: la capa en memoria tiene tres entidades',
+         capa.featureCount() == 3)
 
     alg = ExportarGoogleEarthAlgorithm()
     alg.initAlgorithm()
@@ -279,6 +285,45 @@ def _probar_vector(tmp):
     }, rec)
     comp('vector: la exportacion termina sin error', ok,
          (tb.strip().splitlines()[-1] if tb else _resumen(rec)))
+
+    seccion('Vectorial con linea de tiempo')
+    alg2 = ExportarGoogleEarthAlgorithm()
+    alg2.initAlgorithm()
+    destino2 = os.path.join(tmp, 'salida_tiempo.kmz')
+    rec2 = _Recolector()
+    _res2, ok2, tb2 = _correr(alg2, {
+        'CAPA': capa, 'CAMPO_FECHA': 'fecha', 'NOMBRE': 'prueba',
+        'PX_LADO': 512, 'FORMATO': 0, 'OPACIDAD': 100, 'ABRIR': False,
+        'SALIDA': destino2,
+    }, rec2)
+    if not comp('con CAMPO_FECHA la exportacion termina sin error', ok2,
+                (tb2.strip().splitlines()[-1] if tb2 else _resumen(rec2))):
+        return
+
+    # Lo que importa no es que el archivo exista, sino que Google Earth
+    # vaya a encontrar el <TimeStamp>: sin el, abre igual y la linea de
+    # tiempo no aparece, sin un solo error.
+    real = destino2 if os.path.exists(destino2) else destino2[:-4] + '.kml'
+    if not comp('el archivo con tiempo existe', os.path.isfile(real), real):
+        return
+    if real.lower().endswith('.kmz'):
+        with zipfile.ZipFile(real) as z:
+            crudo = b''.join(z.read(n) for n in z.namelist()
+                             if n.lower().endswith('.kml'))
+    else:
+        crudo = open(real, 'rb').read()
+    texto = crudo.decode('utf-8', 'replace')
+    comp('el KML declara TimeStamp', 'TimeStamp' in texto,
+         'sin el, Google Earth no muestra el control de tiempo')
+    comp('y trae las fechas normalizadas',
+         '2025-01-03' in texto and '2025-07-14' in texto,
+         'las dos fechas validas tienen que estar en el <when>')
+    comp('la entidad sin fecha legible no inventa un <when>',
+         texto.count('<when>') == 2,
+         f'se esperaban 2 <when> y hay {texto.count("<when>")}')
+    avisos = ' '.join(rec2.info) + ' '.join(rec2.errores)
+    comp('se informa cuantas fechas se entendieron',
+         '2' in avisos or 'fecha' in avisos.lower(), avisos[-200:])
 
 
 def _pseudocolor(capa):

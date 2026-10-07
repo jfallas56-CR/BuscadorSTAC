@@ -26,6 +26,25 @@ que esto forma parte de ella. **Si ya construyó un ZIP 1.0.0 antes de
 estos cambios, vuelva a construirlo**: dos ZIP distintos con el mismo
 número es justo lo que rompe la trazabilidad.
 
+- **Google Earth: línea de tiempo en la capa exportada.** El exportador
+  acepta un campo de fecha y escribe un `<TimeStamp>` por entidad, que es
+  lo que enciende el control deslizante de tiempo de Google Earth: la
+  serie de huellas se puede recorrer o acotar a un intervalo en vez de
+  verse toda encimada. En la capa de huellas el campo es `fecha`.
+
+  Las fechas se normalizan a ISO 8601 antes de escribir, en una copia en
+  memoria con el campo `timestamp` que el controlador LIBKML interpreta.
+  No se apunta el controlador al campo original —que sería más barato—
+  porque Google Earth ignora en silencio cualquier otra forma: el KMZ
+  abriría, las entidades se verían y la línea de tiempo no aparecería sin
+  que nada lo explicara. Pasando por la copia se puede además CONTAR
+  cuántas fechas se entendieron y decirlo.
+
+  `03/01/2025` se rechaza a propósito: no hay manera de saber si es 3 de
+  enero o 1 de marzo, y adivinarlo desplazaría la serie entera en
+  silencio. `2025/01/03` sí se acepta, porque empieza por el año y no hay
+  nada que adivinar.
+
 - **Sentinel-1: medianas por estación, SRC de salida e informe de
   auditoría.** La amplitud sola no dice sobre qué nivel se mide —una
   diferencia de 0,001 no significa lo mismo sobre un fondo de 0,005 que

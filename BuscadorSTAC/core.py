@@ -28,9 +28,11 @@ Licencia : GPL v2 o posterior
 Versión  : 1.0.0
 """
 
+import datetime
 import json
 import math
 import os
+import re
 
 import numpy as np
 
@@ -744,6 +746,58 @@ def informe_html(datos):
         'parámetros se produjo cada archivo, para poder repetirlo o '
         'revisarlo más tarde.</footer>\n'
         '</body>\n</html>\n')
+
+
+_RE_FECHA_KML = re.compile(
+    r'^(\d{4})[-/](\d{2})[-/](\d{2})'
+    r'(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?'
+    r'(Z|[+-]\d{2}:?\d{2})?)?$')
+
+
+def fecha_kml(valor):
+    """Fecha en la forma que acepta KML, o None si no se puede.
+
+    Google Earth pone en su linea de tiempo las entidades que traen
+    <TimeStamp>, y el controlador LIBKML lo escribe desde un campo
+    llamado «timestamp». Pero solo lo entiende en ISO 8601: un
+    «03/01/2025» se escribe tal cual en el KML y Google Earth lo ignora
+    SIN decir nada, que es la peor forma de fallar --el archivo abre, las
+    entidades se ven, y la linea de tiempo simplemente no aparece--. De
+    ahi que se normalice aqui en vez de confiar en lo que traiga el
+    campo.
+
+    No se inventa zona horaria. KML da por supuesto UTC cuando no la hay,
+    asi que anadir una «Z» que el dato no traia seria afirmar algo que no
+    consta. Si venia, se conserva.
+
+    Devuelve «AAAA-MM-DD» o «AAAA-MM-DDThh:mm:ss[zona]».
+    """
+    if valor is None:
+        return None
+    # Un date o datetime de Python ya sabe escribirse.
+    if hasattr(valor, 'isoformat') and not isinstance(valor, str):
+        try:
+            return valor.isoformat()
+        except (TypeError, ValueError):
+            return None
+    texto = str(valor).strip()
+    if not texto:
+        return None
+    m = _RE_FECHA_KML.match(texto)
+    if not m:
+        return None
+    anio, mes, dia, hh, mm, ss, zona = m.groups()
+    # Que la fecha EXISTA: el patron acepta 2025-02-30 y KML no.
+    try:
+        datetime.date(int(anio), int(mes), int(dia))
+    except ValueError:
+        return None
+    base = f'{anio}-{mes}-{dia}'
+    if hh is None:
+        return base
+    if int(hh) > 23 or int(mm) > 59 or (ss is not None and int(ss) > 60):
+        return None
+    return f'{base}T{hh}:{mm}:{ss or "00"}{zona or ""}'
 
 
 def lista_con_zip(valor):
