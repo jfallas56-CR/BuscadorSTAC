@@ -54,7 +54,7 @@ import logging
 import os
 import zipfile
 
-from qgis.PyQt.QtCore import QCoreApplication, QDate, QDateTime, Qt, QUrl
+from qgis.PyQt.QtCore import QCoreApplication, QUrl
 from qgis.PyQt.QtGui import QDesktopServices
 
 from qgis.core import (QgsCoordinateReferenceSystem,
@@ -651,8 +651,16 @@ class ExportarGoogleEarthAlgorithm(QgsProcessingAlgorithm):
         nuevas, con_fecha, sin_fecha = [], 0, 0
         for f in origen:
             valor = f[campo]
-            if isinstance(valor, (QDate, QDateTime)):
-                valor = valor.toString(Qt.ISODate)
+            # QDate/QDateTime a objeto de Python, y NO con Qt.ISODate: en
+            # Qt6 ese enum vive en Qt.DateFormat.ISODate y la forma plana
+            # desaparece. Lo cazó api_audit antes de que llegara a nadie.
+            # toPyDateTime()/toPyDate() existen en PyQt5 y PyQt6, y lo que
+            # devuelven ya lo entiende fecha_kml por su isoformat().
+            for _conv in ('toPyDateTime', 'toPyDate'):
+                _f = getattr(valor, _conv, None)
+                if callable(_f):
+                    valor = _f()
+                    break
             iso = fecha_kml(valor)
             if iso:
                 con_fecha += 1
