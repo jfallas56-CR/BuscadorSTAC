@@ -25,6 +25,7 @@ Version  : 1.0.0
 from __future__ import annotations
 
 import os
+import re
 import sys
 import tempfile
 import traceback
@@ -330,6 +331,91 @@ def _probar_vector(tmp):
     avisos = ' '.join(rec2.info) + ' '.join(rec2.errores)
     comp('se informa cuantas fechas se entendieron',
          '2' in avisos or 'fecha' in avisos.lower(), avisos[-200:])
+
+    _probar_nombre_con_tildes(capa, tmp)
+
+
+def _probar_nombre_con_tildes(capa, tmp):
+    """El caso que esta prueba NO cubria: un nombre de capa en espanol.
+
+    Hasta ahora todas las llamadas pasaban NOMBRE='prueba', ASCII, y por
+    eso CI daba verde mientras el complemento producia un KMZ que ni
+    Google Earth ni el propio GDAL podian leer. El nombre es el de la capa
+    real con la que fallo: «Bufer Oval 357x179 m [Union]», con tildes.
+    """
+    from BuscadorSTAC.core import href_inseguro
+    from BuscadorSTAC.google_earth_algoritmo import (
+        ExportarGoogleEarthAlgorithm)
+
+    seccion('Vectorial con tildes en el nombre de la capa')
+    rotulo = 'Búfer Oval 357x179 m [Unión]'
+    alg = ExportarGoogleEarthAlgorithm()
+    alg.initAlgorithm()
+    destino = os.path.join(tmp, 'salida_tildes.kmz')
+    rec = _Recolector()
+    _res, ok, tb = _correr(alg, {
+        'CAPA': capa, 'NOMBRE': rotulo, 'PX_LADO': 512, 'FORMATO': 0,
+        'OPACIDAD': 100, 'ABRIR': False, 'SALIDA': destino,
+    }, rec)
+    if not comp('con tildes la exportacion termina sin error', ok,
+                (tb.strip().splitlines()[-1] if tb else _resumen(rec))):
+        return
+    if not comp('el archivo con tildes existe', os.path.isfile(destino),
+                destino):
+        return
+    if not zipfile.is_zipfile(destino):
+        comp('el KMZ con tildes es un ZIP', False,
+             'LIBKML falta y se degrado a .kml; el resto no aplica')
+        return
+
+    with zipfile.ZipFile(destino) as z:
+        nombres = z.namelist()
+        doc = z.read('doc.kml').decode('utf-8', 'replace') \
+            if 'doc.kml' in nombres else ''
+
+    # 1. Ningun miembro con nombre no ASCII. LIBKML los escribe en UTF-8
+    #    crudo con el bit 11 del ZIP en cero, asi que la norma obliga a
+    #    leerlos como CP437 y el nombre deja de coincidir con el href.
+    no_ascii = [n for n in nombres if any(ord(c) > 126 for c in n)]
+    comp('ningun miembro del ZIP lleva caracteres no ASCII',
+         not no_ascii, f'miembros problematicos: {no_ascii}')
+
+    # 2. Sin NetworkLink: el documento tiene que estar en doc.kml.
+    comp('doc.kml no delega en un <NetworkLink>',
+         '<NetworkLink' not in doc,
+         'con el enlace, ogr.Open devuelve None sobre este mismo archivo')
+    comp('doc.kml trae los <Placemark> el mismo',
+         doc.count('<Placemark') == 3,
+         f'se esperaban 3 y hay {doc.count("<Placemark")}')
+
+    # 3. Ningun href interno impronunciable, haya o no NetworkLink.
+    malos = []
+    for href in re.findall(r'<href>\s*(.*?)\s*</href>', doc, re.S):
+        if '://' not in href and href_inseguro(href):
+            malos.append(href)
+    comp('ningun <href> relativo con caracteres invalidos en URI',
+         not malos, f'hrefs: {malos}')
+
+    # 4. Y las tildes siguen donde el usuario las ve.
+    comp('el nombre con tildes se conserva para mostrarlo',
+         rotulo in doc, 'el <name> del documento perdio las tildes')
+
+    # 5. La prueba de verdad: que GDAL lo lea. Es el lector mas parecido
+    #    al de Google Earth que hay disponible sin Google Earth.
+    try:
+        from osgeo import ogr as _ogr
+        ds = _ogr.Open(destino)
+        if ds is None:
+            comp('GDAL abre el KMZ con tildes', False,
+                 'ogr.Open devolvio None: es el fallo que reporto el usuario')
+        else:
+            cap = ds.GetLayerCount()
+            ent = ds.GetLayer(0).GetFeatureCount() if cap else 0
+            comp('GDAL lee una capa con sus tres entidades',
+                 cap == 1 and ent == 3,
+                 f'{cap} capa(s), {ent} entidad(es)')
+    except ImportError as e:
+        comp('GDAL disponible para releer el KMZ', False, str(e))
 
 
 def _pseudocolor(capa):

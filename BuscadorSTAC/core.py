@@ -25,7 +25,7 @@ cambió ni una línea de ellos.
 
 Autor    : Jorge Fallas (jfallas56@gmail.com)
 Licencia : GPL v2 o posterior
-Versión  : 1.0.0
+Versión  : 1.0.1
 """
 
 import datetime
@@ -1004,3 +1004,75 @@ def contar_kml(texto):
         pos = k + 1
     cuenta['vertices'] = total
     return cuenta
+
+
+# Un <href> de KML es una referencia URI, y RFC 3986 no admite estos
+# caracteres sin porcentaje-codificar. Los que importan en la practica,
+# porque salen de un nombre de capa de QGIS, son los NO ASCII: ver
+# capa_a_promover para por que esos son los que rompen de verdad.
+_HREF_PROHIBIDOS = ' "<>\\^`{|}[]'
+
+
+def href_inseguro(href):
+    """Caracteres de `href` que no valen en una URI, en orden y sin repetir.
+
+    Devuelve '' si el href es seguro. Sirve para no escribir dentro de un
+    KMZ un enlace que Google Earth no va a poder resolver.
+    """
+    malos = []
+    for car in str(href or ''):
+        if car in _HREF_PROHIBIDOS or ord(car) > 126 or ord(car) < 32:
+            if car not in malos:
+                malos.append(car)
+    return ''.join(malos)
+
+
+def capa_a_promover(nombres, doc_texto):
+    """Nombre del KML de capa que debe pasar a ser el `doc.kml`, o None.
+
+    LIBKML no escribe el documento en `doc.kml`: escribe ahi un
+    <NetworkLink> con un <href> hacia `layers/<nombre de la capa>.kml`, y
+    mete el <Document>, su <name> y los <Placemark> en ese segundo
+    archivo. El nombre de la capa pasa TAL CUAL al href y al nombre del
+    miembro del ZIP, y ahi esta el fallo: LIBKML escribe ese nombre en
+    UTF-8 crudo pero DEJA EN CERO el bit 11 de las banderas del ZIP, el
+    que declara «este nombre esta en UTF-8». Sin ese bit, la norma del
+    formato obliga a leer el nombre como CP437, asi que un lector
+    conforme ve «layers/BÃºfer.kml» mientras el href pide
+    «layers/Búfer.kml». El enlace no resuelve, y el KMZ abre vacio sin un
+    solo mensaje.
+
+    Medido con GDAL 3.8.4: con el nombre «Búfer» el propio `ogr.Open`
+    devuelve None sobre el KMZ que LIBKML acaba de escribir. Con
+    «Bufer Oval 357» (espacios) y con «Buferes[Union]» (corchetes) lo lee
+    sin problema. O sea: lo que rompe son las tildes y la enie, no los
+    espacios ni los corchetes — y en espanol eso es casi cualquier nombre
+    de capa.
+
+    Aplanar el archivo —que el documento viva directamente en `doc.kml`—
+    deja un unico miembro, de nombre ASCII, y sin ningun href que
+    resolver. Es ademas la forma canonica de un KMZ de una sola capa, y
+    para una capa de nombre ASCII, que ya funcionaba, no cambia nada.
+
+    Solo se aplana el caso que LIBKML produce para una capa, y se
+    comprueba antes: `doc.kml` sin contenido propio, exactamente un KML de
+    capa y ningun otro miembro que pudiera depender de la ruta relativa
+    (una imagen de icono, por ejemplo) y que al mover el documento se
+    quedaria sin resolver.
+    """
+    nombres = list(nombres)
+    if 'doc.kml' not in nombres:
+        return None
+    if '<Placemark' in doc_texto or '<GroundOverlay' in doc_texto:
+        return None          # doc.kml ya tiene contenido propio
+    capas = [n for n in nombres
+             if n != 'doc.kml' and n.lower().endswith('.kml')]
+    if len(capas) != 1:
+        return None          # varias capas: el NetworkLink hace falta
+    otros = [n for n in nombres
+             if n != 'doc.kml' and n not in capas and not n.endswith('/')]
+    if otros:
+        return None          # hay recursos con ruta relativa; no tocar
+    if not capas[0].startswith('layers/'):
+        return None          # no es la forma que escribe LIBKML
+    return capas[0]

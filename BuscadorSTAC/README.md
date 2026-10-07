@@ -1,6 +1,6 @@
 # Buscador STAC: Sentinel, Landsat y Esri Wayback
 
-![version](https://img.shields.io/badge/version-1.0.0-blue)
+![version](https://img.shields.io/badge/version-1.0.1-blue)
 ![QGIS](https://img.shields.io/badge/QGIS-%E2%89%A5%203.28-green)
 ![licencia](https://img.shields.io/badge/licencia-GPL%20v2%2B-orange)
 
@@ -308,6 +308,24 @@ entendieron y cuántas no. Un `03/01/2025` se rechaza a propósito —no se pued
 saber si es 3 de enero o 1 de marzo, y adivinarlo desplazaría la serie
 entera—; `2025/01/03` sí se acepta, porque empieza por el año.
 
+**Por dentro: un solo `doc.kml`.** El KMZ que sale lleva el documento
+directamente en `doc.kml`, sin archivos auxiliares. No es un detalle estético:
+el controlador LIBKML de GDAL, por omisión, escribe en `doc.kml` solo un
+`<NetworkLink>` que apunta a `layers/<nombre de la capa>.kml`, y mete ese
+nombre en el ZIP **en UTF-8 crudo dejando en cero el bit 11 de las banderas
+del archivo**, que es el que declara «este nombre está en UTF-8». Sin ese bit,
+la norma del formato obliga a leer el nombre como CP437: el lector ve
+`layers/BÃºfer.kml` mientras el enlace pide `layers/Búfer.kml`, no resuelve, y
+**el KMZ abre vacío sin un solo mensaje**.
+
+Medido con GDAL 3.8.4: con una capa llamada `Búfer Oval 357x179 m [Unión]`,
+`ogr.Open` devuelve `None` sobre el KMZ recién escrito. Con
+`Bufer Oval 357` (espacios) y con `Buferes[Union]` (corchetes) lo lee bien. Lo
+que rompe son **las tildes y la eñe** — en español, casi cualquier nombre de
+capa. El complemento aplana el archivo para que esto no pueda pasar, y si por
+alguna razón quedara un enlace interno con caracteres que no valen en una URI,
+lo avisa en vez de entregar un KMZ mudo.
+
 **Qué versión de Google Earth.** El KMZ lo leen todas: Earth Pro de
 escritorio, Earth Web y las apps móviles. Abrirlo automáticamente solo se
 puede en el de **escritorio**, mediante la asociación de archivos del sistema.
@@ -376,6 +394,7 @@ Copyright © 2026 Jorge Fallas <jfallas56@gmail.com>
 
 | Versión | Fecha | Cambios |
 |---|---|---|
+| 1.0.1 | 2026-10-07 | Corrección del KMZ vectorial: el documento pasa a `doc.kml` y se quita el enlace interno de LIBKML, que con tildes en el nombre de la capa no resolvía y dejaba el archivo vacío en Google Earth. |
 | 1.0.0 | 2026-10-02 | Primera versión pública. Cuatro algoritmos: búsqueda y descarga Sentinel-2 / Landsat por STAC y COG, Esri World Imagery / Wayback, Sentinel-1 RTC vía ASF HyP3, y exportación a Google Earth (KMZ). |
 
 El desarrollo previo a esta publicación —27 iteraciones internas que nunca

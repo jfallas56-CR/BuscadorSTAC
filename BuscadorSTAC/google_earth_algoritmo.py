@@ -41,9 +41,13 @@ LO QUE NO HACE
 
 Autor    : Jorge Fallas (jfallas56@gmail.com)
 Licencia : GPL v2 o posterior
-Versión  : 1.0.0
+Versión  : 1.0.1
 
 Historial:
+    1.0.1 (2026-10-07): El KMZ vectorial se aplana para que el documento
+        viva en doc.kml. LIBKML escribia el nombre de la capa en
+        UTF-8 crudo sin el bit 11 del ZIP, y con tildes el enlace
+        interno no resolvia: el archivo abria vacio.
     1.0.0 (2026-10-02): Primera versión pública.
         El historial detallado del desarrollo previo a la publicación está en
         CHANGELOG.md del repositorio:
@@ -52,6 +56,7 @@ Historial:
 
 import logging
 import os
+import re
 import zipfile
 
 from qgis.PyQt.QtCore import QCoreApplication, QUrl
@@ -82,7 +87,8 @@ from qgis.core import (QgsCoordinateReferenceSystem,
 
 from .buscar_sentinel2_algoritmo import AUTOR, AUTOR_EMAIL, _STR
 from .core import (TOPE_ENTIDADES_WEB, TOPE_VERTICES_WEB,
-                   contar_kml, fecha_kml, insertar_opacidad_kml)
+                   capa_a_promover, contar_kml, fecha_kml,
+                   href_inseguro, insertar_opacidad_kml)
 
 try:
     from osgeo import gdal, ogr
@@ -101,7 +107,7 @@ FORMATOS_IMAGEN = ['PNG (conserva transparencia)', 'JPEG (menos peso)']
 class ExportarGoogleEarthAlgorithm(QgsProcessingAlgorithm):
     """Capa ráster o vectorial a KMZ, y abrirlo en Google Earth."""
 
-    VERSION = 'v1.0.0'
+    VERSION = 'v1.0.1'
 
     CAPA = 'CAPA'
     CAMPO_FECHA = 'CAMPO_FECHA'
@@ -358,7 +364,8 @@ class ExportarGoogleEarthAlgorithm(QgsProcessingAlgorithm):
                           f'(KML solo existe en WGS84)')
         feedback.pushInfo(f'Salida  : {destino}')
 
-        if isinstance(capa, QgsRasterLayer):
+        es_raster = isinstance(capa, QgsRasterLayer)
+        if es_raster:
             self._exportar_raster(capa, destino, rotulo, parameters, context,
                                   feedback)
         else:
@@ -371,6 +378,14 @@ class ExportarGoogleEarthAlgorithm(QgsProcessingAlgorithm):
             raise QgsProcessingException(
                 'La conversión terminó sin error pero no se escribió '
                 f'ningún archivo en {destino}. Revise el registro.')
+
+        # Solo el camino vectorial. Un KMZ de raster lo escribe
+        # KMLSUPEROVERLAY, cuyos miembros son rutas de teselas en
+        # ASCII: nunca tuvo este problema, y uno de una sola tesela
+        # tiene la misma forma que el de LIBKML —doc.kml con solo un
+        # NetworkLink y un unico .kml— asi que conviene no acercarse.
+        if not es_raster:
+            self._aplanar_kmz(destino, feedback)
 
         mib = os.path.getsize(destino) / 1048576.0
         feedback.pushInfo(f'\nKMZ escrito: {destino}  ({mib:.2f} MiB)')
@@ -758,6 +773,79 @@ class ExportarGoogleEarthAlgorithm(QgsProcessingAlgorithm):
             raise QgsProcessingException(
                 f'La escritura del KMZ falló (código {codigo}): {mensaje}')
         return destino
+
+    # --- aplanado del KMZ -----------------------------------------------
+    def _aplanar_kmz(self, kmz, feedback):
+        """Sube el KML de la capa a `doc.kml` y quita el <NetworkLink>.
+
+        El porqué está en core.capa_a_promover. Aquí solo se reescribe el
+        archivo, y si algo falla se deja el KMZ como estaba: un KMZ con el
+        enlace es lo que había hasta ahora, y es mejor que ninguno.
+        """
+        if not zipfile.is_zipfile(kmz):
+            return                      # KML sin comprimir: no aplica
+        try:
+            with zipfile.ZipFile(kmz) as z:
+                nombres = z.namelist()
+                if 'doc.kml' not in nombres:
+                    return
+                doc = z.read('doc.kml').decode('utf-8', 'replace')
+                capa = capa_a_promover(nombres, doc)
+                if not capa:
+                    self._avisar_hrefs(doc, nombres, z, feedback)
+                    return
+                contenido = z.read(capa)
+        except (zipfile.BadZipFile, OSError, KeyError) as e:
+            feedback.pushDebugInfo(f'[kmz] no se pudo aplanar: {e}')
+            return
+
+        temporal = kmz + '.aplanado'
+        try:
+            with zipfile.ZipFile(temporal, 'w',
+                                 zipfile.ZIP_DEFLATED) as z:
+                z.writestr('doc.kml', contenido)
+            os.replace(temporal, kmz)
+        except (OSError, zipfile.BadZipFile) as e:
+            feedback.pushWarning(
+                f'[!] El KMZ quedó con el enlace interno de LIBKML porque '
+                f'no se pudo reescribir: {e}. Si Google Earth lo abre y no '
+                f'muestra nada, renombre la capa SIN TILDES NI EÑES y '
+                f'vuelva a exportar.')
+            try:
+                if os.path.exists(temporal):
+                    os.remove(temporal)
+            except OSError as e2:
+                feedback.pushDebugInfo(f'[kmz] temporal: {e2}')
+            return
+
+        feedback.pushInfo(
+            'KMZ aplanado: el documento va en doc.kml, sin el enlace '
+            'interno de LIBKML.')
+
+    def _avisar_hrefs(self, doc, nombres, z, feedback):
+        """Si queda algún <href> relativo impronunciable, decirlo."""
+        textos = [doc]
+        for n in nombres:
+            if n != 'doc.kml' and n.lower().endswith('.kml'):
+                try:
+                    textos.append(z.read(n).decode('utf-8', 'replace'))
+                except (OSError, KeyError) as e:
+                    feedback.pushDebugInfo(f'[kmz] {n}: {e}')
+        for texto in textos:
+            for href in re.findall(r'<href>\s*(.*?)\s*</href>', texto,
+                                   re.S):
+                if '://' in href:
+                    continue            # enlace externo, no es asunto nuestro
+                malos = href_inseguro(href)
+                if malos:
+                    feedback.pushWarning(
+                        f'[!] El KMZ lleva un enlace interno con '
+                        f'caracteres que no valen en una URI ({malos}): '
+                        f'«{href}». Google Earth puede abrir el archivo y '
+                        f'no mostrar nada. Renombre la capa sin esos '
+                        f'caracteres —las tildes y la eñe son las que '
+                        f'rompen— y vuelva a exportar.')
+                    return
 
     # --- avisos sobre el contenido --------------------------------------
     def _avisar_contenido(self, kmz, feedback):

@@ -1080,3 +1080,79 @@ def test_acepta_objetos_date_y_datetime():
 def test_vacio_y_basura_dan_none():
     for v in (None, '', '   ', 'hola', 'NULL', 0):
         assert core.fecha_kml(v) is None, repr(v)
+
+
+# --------------------------------------------------------------------------
+# El KMZ de LIBKML: href y aplanado
+# --------------------------------------------------------------------------
+def test_href_ascii_limpio_es_seguro():
+    assert core.href_inseguro('layers/Buferes.kml') == ''
+    assert core.href_inseguro('layers/Bufer-Oval_357.kml') == ''
+
+
+def test_href_senala_las_tildes():
+    """Lo medido con GDAL 3.8.4: la tilde es lo que rompe el enlace."""
+    assert core.href_inseguro('layers/Búfer.kml') == 'ú'
+    assert core.href_inseguro('año.kml') == 'ñ'
+
+
+def test_href_no_repite_un_caracter_ni_pierde_el_orden():
+    assert core.href_inseguro('a b[c]d eú') == ' []ú'
+
+
+def test_href_vacio_o_nulo_no_estalla():
+    assert core.href_inseguro(None) == ''
+    assert core.href_inseguro('') == ''
+
+
+def _doc_con_enlace(href):
+    return ('<kml><Document id="root_doc"><NetworkLink><Link>'
+            '<href>%s</href></Link></NetworkLink></Document></kml>' % href)
+
+
+def test_promueve_la_unica_capa_de_un_kmz_de_libkml():
+    nombres = ['doc.kml', 'layers/', 'layers/Búfer [Unión].kml']
+    doc = _doc_con_enlace('layers/Búfer [Unión].kml')
+    assert (core.capa_a_promover(nombres, doc)
+            == 'layers/Búfer [Unión].kml')
+
+
+def test_no_aplana_si_doc_kml_ya_tiene_contenido():
+    """El camino del raster: KMLSUPEROVERLAY ya escribe el doc completo."""
+    nombres = ['doc.kml', 'files/0/0/0.png']
+    doc = '<kml><Document><GroundOverlay><Icon/></GroundOverlay></Document></kml>'
+    assert core.capa_a_promover(nombres, doc) is None
+    doc2 = '<kml><Document><Placemark/></Document></kml>'
+    assert core.capa_a_promover(nombres, doc2) is None
+
+
+def test_no_aplana_con_varias_capas():
+    """Con dos capas el NetworkLink hace falta: aplanar perderia una."""
+    nombres = ['doc.kml', 'layers/', 'layers/a.kml', 'layers/b.kml']
+    assert core.capa_a_promover(nombres, _doc_con_enlace('layers/a.kml')) is None
+
+
+def test_no_aplana_si_hay_recursos_con_ruta_relativa():
+    """Un icono referido desde layers/ se quedaria sin resolver."""
+    nombres = ['doc.kml', 'layers/', 'layers/a.kml', 'images/icono.png']
+    assert core.capa_a_promover(nombres, _doc_con_enlace('layers/a.kml')) is None
+
+
+def test_no_aplana_lo_que_no_es_un_kmz_de_libkml():
+    assert core.capa_a_promover([], '') is None
+    assert core.capa_a_promover(['layers/a.kml'], '') is None
+    assert core.capa_a_promover(['doc.kml'], _doc_con_enlace('x')) is None
+
+
+def test_no_aplana_un_superoverlay_de_una_sola_tesela():
+    """Medido con GDAL 3.8.4 sobre un raster de 32x32 px.
+
+    KMLSUPEROVERLAY produce ahi doc.kml con SOLO un <NetworkLink> y un
+    unico 0/0/0.kml — la misma forma que LIBKML. Lo unico que lo
+    distingue son los PNG y la ruta, que no empieza por «layers/».
+    """
+    nombres = ['doc.kml', '0/0/0.kml', '0/0/0.png', '0.png', 'tmp.png']
+    doc = _doc_con_enlace('0/0/0.kml')
+    assert core.capa_a_promover(nombres, doc) is None
+    # Y aunque alguien quitara los PNG, la ruta sigue delatandolo.
+    assert core.capa_a_promover(['doc.kml', '0/0/0.kml'], doc) is None
