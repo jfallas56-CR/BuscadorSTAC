@@ -25,7 +25,7 @@ cambió ni una línea de ellos.
 
 Autor    : Jorge Fallas (jfallas56@gmail.com)
 Licencia : GPL v2 o posterior
-Versión  : 1.0.4
+Versión  : 1.0.5
 """
 
 import datetime
@@ -1126,3 +1126,44 @@ def extension_sospechosa(oeste, sur, este, norte):
     except (TypeError, ValueError):
         return False
     return max(ancho, alto) > GRADOS_EXTENSION_SOSPECHOSA
+
+
+# Proveedores cuyo extent() es el del SERVICIO, no el de los datos que el
+# usuario esta mirando. Un WMTS mundial declara el mundo aunque en el
+# lienzo se vea una finca.
+PROVEEDORES_REMOTOS = ('wms', 'wcs', 'xyz', 'arcgismapserver',
+                       'arcgisrestserver')
+
+
+def es_proveedor_remoto(nombre):
+    """¿Es un proveedor de teselas/mapa remoto servido por la red?"""
+    return str(nombre or '').strip().lower() in PROVEEDORES_REMOTOS
+
+
+# Espacio fino e indivisible: el separador de millar de la tipografia
+# espanola. Indivisible para que «19 568» no se parta al final de linea.
+ESPACIO_FINO = '\u202f'
+
+
+def miles(valor, decimales=0):
+    """Numero en convencion espanola: millar con espacio fino, coma decimal.
+
+    Se formatea APARTE de la frase a proposito. Antes el numero se metia
+    en la frase y luego se hacia .replace(',', ' ') sobre TODA la cadena:
+    el separador de millar quedaba bien y las comas de la prosa
+    desaparecian. El usuario leyo «su extension declarada es la del
+    servicio no la de lo que usted ve», y el error llego hasta el porque
+    nada lo podia detectar: la frase era gramaticalmente plausible.
+
+    No se usa en coordenadas. Un «-83,68» se copia mal a un campo de
+    extension o de SRC, donde QGIS espera punto; ahi el punto decimal es
+    lo correcto aunque no sea la convencion del idioma.
+    """
+    try:
+        texto = '{:,.{d}f}'.format(float(valor), d=int(decimales))
+    except (TypeError, ValueError):
+        return ''
+    # Primero el millar a un marcador, luego el decimal a coma, y al
+    # final el marcador al espacio fino: hacerlo en otro orden se pisa.
+    return (texto.replace(',', '\x00').replace('.', ',')
+                 .replace('\x00', ESPACIO_FINO))

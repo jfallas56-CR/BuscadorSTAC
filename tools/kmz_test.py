@@ -424,6 +424,56 @@ def _probar_area_con_reproyeccion(tmp):
     hay, motivo = _imagen_con_contenido(destino, pngs, tmp)
     comp('y la imagen tiene contenido, no es transparente', hay, motivo)
 
+    _probar_rechazo_de_capa_remota(tmp)
+
+
+def _probar_rechazo_de_capa_remota(tmp):
+    """Un mapa base remoto SIN area tiene que pararse antes de escribir.
+
+    Avisar despues no sirvio: el algoritmo escribia 2,7 MiB, abria Google
+    Earth y el usuario encontraba el resultado malo con la explicacion
+    encima. Se usa una capa XYZ apuntando a un archivo local --no sale a
+    la red, pero el proveedor es «wms», que es lo que decide.
+    """
+    from qgis.core import QgsProcessingContext, QgsRasterLayer
+    from BuscadorSTAC.google_earth_algoritmo import (
+        ExportarGoogleEarthAlgorithm)
+
+    seccion('Raster: capa remota sin area pedida se rechaza')
+    uri = ('type=xyz&url=file://' + tmp.replace('\\', '/')
+           + '/teselas/%7Bz%7D/%7Bx%7D/%7By%7D.png&zmax=5&zmin=0')
+    capa = QgsRasterLayer(uri, 'basemap', 'wms')
+    proveedor = ''
+    try:
+        proveedor = capa.dataProvider().name()
+    except Exception as e:
+        nota(f'no se pudo leer el proveedor: {e}')
+    if proveedor != 'wms':
+        nota(f'capa XYZ local no disponible (proveedor={proveedor!r}); '
+             f'el rechazo se comprueba igual en tests/test_core.py sobre '
+             f'es_proveedor_remoto')
+        return
+
+    alg = ExportarGoogleEarthAlgorithm()
+    alg.initAlgorithm()
+    ctx = QgsProcessingContext()
+    base = {'CAPA': capa, 'NOMBRE': 'x', 'PX_LADO': 2048, 'FORMATO': 0,
+            'OPACIDAD': 100, 'ABRIR': False,
+            'SALIDA': os.path.join(tmp, 'no_deberia_existir.kmz')}
+
+    ok, msg = alg.checkParameterValues(dict(base), ctx)
+    comp('sin area, la validacion RECHAZA la capa remota', not ok,
+         f'dejo pasar: {msg!r}')
+    comp('y el mensaje nombra el parametro que hay que rellenar',
+         'área a exportar' in (msg or ''), repr(msg))
+
+    conf = dict(base)
+    conf['EXTENSION'] = '-84.0,-83.5,9.7,10.2 [EPSG:4326]'
+    ok2, msg2 = alg.checkParameterValues(conf, ctx)
+    comp('con area, la validacion ya no rechaza por ese motivo',
+         ok2 or 'área a exportar' not in (msg2 or ''),
+         f'siguio rechazando por el area: {msg2!r}')
+
 
 def _caja_nivel0(kmz):
     """(N, S, E, W) del nivel 0 de un super-overlay, o None."""

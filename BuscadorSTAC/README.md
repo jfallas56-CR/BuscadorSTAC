@@ -1,6 +1,6 @@
 # Buscador STAC: Sentinel, Landsat y Esri Wayback
 
-![version](https://img.shields.io/badge/version-1.0.4-blue)
+![version](https://img.shields.io/badge/version-1.0.5-blue)
 ![QGIS](https://img.shields.io/badge/QGIS-%E2%89%A5%203.28-green)
 ![licencia](https://img.shields.io/badge/licencia-GPL%20v2%2B-orange)
 
@@ -361,6 +361,15 @@ Ese número es el que dice si la exportación sirve antes de abrirla.
 Para acotarla, el diálogo trae los botones de siempre: «Usar extensión del
 lienzo del mapa» y «Dibujar en el lienzo».
 
+Con una capa **servida por la red** —`wms`, `wcs`, `xyz`, ArcGIS REST— dejar el
+área vacía ya no se permite: el algoritmo se detiene en la validación y le pide
+el área, antes de escribir nada. La primera versión solo avisaba, y eso no
+servía de nada: para cuando el aviso aparecía, ya había 2,7 MiB escritos y
+Google Earth abierto encima de un resultado que no se podía aprovechar. La
+extensión que declara un WMTS es la del servicio, nunca una intención suya, así
+que no hay nada razonable que suponer. Si de verdad quiere el mundo entero,
+indíquelo en el parámetro y se exporta.
+
 **Por dentro: un solo `doc.kml`.** El KMZ que sale lleva el documento
 directamente en `doc.kml`, sin archivos auxiliares. No es un detalle estético:
 el controlador LIBKML de GDAL, por omisión, escribe en `doc.kml` solo un
@@ -447,6 +456,7 @@ Copyright © 2026 Jorge Fallas <jfallas56@gmail.com>
 
 | Versión | Fecha | Cambios |
 |---|---|---|
+| 1.0.5 | 2026-10-07 | Una capa servida por la red sin área pedida se rechaza en la validación, antes de escribir nada. Corregido un aviso que perdía las comas de su propia prosa. |
 | 1.0.4 | 2026-10-07 | Nuevo «Ráster: área a exportar». Un mapa base remoto declara extensión mundial, así que exportarlo entero daba 19 km por píxel y en Earth parecía que no cargaba. Se informan los metros por píxel. |
 | 1.0.3 | 2026-10-07 | Solo documentación: se precisa la causa del cierre de 1.0.2 —la capa seleccionada en el panel de capas, no la versión— y se deja escrito que elegir un ráster lo habría cerrado igual. |
 | 1.0.2 | 2026-10-07 | «Campo de fecha» se pide escribiendo el nombre: como parámetro de campo colgado de una capa que puede ser ráster, abrir el diálogo cerraba QGIS (puntero nulo en QGIS, no en el complemento). |

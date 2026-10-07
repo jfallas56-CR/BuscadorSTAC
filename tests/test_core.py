@@ -1200,3 +1200,40 @@ def test_extension_sospechosa_separa_el_mundo_de_un_area():
     assert not core.extension_sospechosa(-83.73, 9.85, -83.63, 9.95)
     assert not core.extension_sospechosa(-86, 8, -82, 12)     # 4 grados
     assert not core.extension_sospechosa(None, 0, 1, 1)
+
+
+# --------------------------------------------------------------------------
+# Proveedores remotos y formato de numero
+# --------------------------------------------------------------------------
+def test_reconoce_los_proveedores_servidos_por_la_red():
+    for p in ('wms', 'WMS', ' xyz ', 'wcs', 'arcgismapserver'):
+        assert core.es_proveedor_remoto(p), p
+    for p in ('gdal', 'ogr', 'memory', 'postgres', '', None):
+        assert not core.es_proveedor_remoto(p), p
+
+
+def test_miles_usa_la_convencion_espanola():
+    """Espacio fino de millar y COMA decimal."""
+    assert core.miles(19568) == '19 568'
+    assert core.miles(19568.04, 1) == '19 568,0'
+    assert core.miles(1234567.89, 2) == '1 234 567,89'
+    assert core.miles(5.4, 1) == '5,4'
+    assert core.miles(0) == '0'
+
+
+def test_miles_no_toca_la_prosa_que_lo_rodea():
+    """El error que llego al usuario: comas de la frase desaparecidas.
+
+    Antes se formateaba el numero DENTRO de la frase y luego se hacia
+    .replace(',', ' ') sobre todo, de modo que «del servicio, no la de»
+    quedaba «del servicio no la de». Formatear aparte lo hace imposible.
+    """
+    frase = ('es la del servicio, no la del lienzo, y mide {} m'
+             .format(core.miles(19568)))
+    assert frase.count(',') == 2, frase
+    assert '19 568' in frase
+
+
+def test_miles_con_basura_devuelve_cadena_vacia():
+    for v in (None, '', 'hola', object()):
+        assert core.miles(v) == '', repr(v)

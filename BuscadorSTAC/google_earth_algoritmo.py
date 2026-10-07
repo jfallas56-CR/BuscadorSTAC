@@ -41,9 +41,14 @@ LO QUE NO HACE
 
 Autor    : Jorge Fallas (jfallas56@gmail.com)
 Licencia : GPL v2 o posterior
-Versión  : 1.0.4
+Versión  : 1.0.5
 
 Historial:
+    1.0.5 (2026-10-07): Un mapa base remoto sin «área a exportar» se
+        RECHAZA en la validación, en vez de avisar cuando el archivo
+        ya estaba escrito. Corregido además un aviso que se comía las
+        comas de su propia prosa, y los metros por píxel salen ahora
+        con coma decimal y espacio fino de millar.
     1.0.4 (2026-10-07): «Ráster: área a exportar». Sin ella, un mapa
         base remoto se exportaba entero —360° en 2048 px, 19 km por
         píxel— y en Earth parecía que la imagen no cargaba. Se
@@ -96,9 +101,10 @@ from qgis.core import (QgsCoordinateReferenceSystem,
 from .buscar_sentinel2_algoritmo import AUTOR, AUTOR_EMAIL, _STR
 from .core import (TOPE_ENTIDADES_WEB, TOPE_VERTICES_WEB,
                    capa_a_promover, contar_kml,
-                   extension_sospechosa, fecha_kml,
-                   href_inseguro, insertar_opacidad_kml,
-                   metros_por_pixel)
+                   es_proveedor_remoto, extension_sospechosa,
+                   fecha_kml, href_inseguro,
+                   insertar_opacidad_kml, metros_por_pixel,
+                   miles)
 
 try:
     from osgeo import gdal, ogr
@@ -117,7 +123,7 @@ FORMATOS_IMAGEN = ['PNG (conserva transparencia)', 'JPEG (menos peso)']
 class ExportarGoogleEarthAlgorithm(QgsProcessingAlgorithm):
     """Capa ráster o vectorial a KMZ, y abrirlo en Google Earth."""
 
-    VERSION = 'v1.0.4'
+    VERSION = 'v1.0.5'
 
     CAPA = 'CAPA'
     CAMPO_FECHA = 'CAMPO_FECHA'
@@ -411,6 +417,42 @@ class ExportarGoogleEarthAlgorithm(QgsProcessingAlgorithm):
                     'necesario para empotrar un ráster en KMZ. Compruébelo '
                     'con «gdalinfo --formats | grep -i kml». Una capa '
                     'vectorial sí se puede exportar.')
+
+            # Un mapa base remoto SIN área pedida no se puede exportar de
+            # forma útil, así que se para aquí en vez de avisar después.
+            # Avisar después no sirvió: el algoritmo ya había escrito 2,7
+            # MiB y abierto Google Earth, y el usuario se encontró el
+            # resultado malo con la explicación encima. La extensión que
+            # declara un WMTS es la del servicio —el mundo—, nunca una
+            # intención del usuario, así que aquí no hay nada razonable
+            # que suponer: hay que preguntarlo.
+            proveedor = ''
+            try:
+                proveedor = capa.dataProvider().name() or ''
+            except Exception as e:
+                # Aquí no hay feedback: checkParameterValues corre antes.
+                _LOG.debug('[proveedor] %s', e)
+                proveedor = ''
+            if es_proveedor_remoto(proveedor) and not parameters.get(
+                    self.EXTENSION):
+                ext_c = capa.extent()
+                return False, self.tr(
+                    '[!] «{n}» es una capa «{p}», servida por la red, y su '
+                    'extensión declarada es la del SERVICIO ({a} x {b} '
+                    'unidades), no la de lo que usted ve en el lienzo. '
+                    'Exportarla entera repartiría los {px} píxeles pedidos '
+                    'por todo el mundo —del orden de 19 568 m por píxel— y '
+                    'su zona de interés no llegaría a ocupar uno: en Google '
+                    'Earth parecería que la imagen no cargó.\n\n'
+                    'Indique «Ráster: área a exportar». El diálogo trae los '
+                    'botones «Usar extensión del lienzo del mapa» y '
+                    '«Dibujar en el lienzo». Si de verdad quiere el mundo '
+                    'entero, indíquelo ahí explícitamente.'
+                ).format(n=capa.name(), p=proveedor,
+                         a=miles(ext_c.width(), 1),
+                         b=miles(ext_c.height(), 1),
+                         px=self.parameterAsInt(parameters, self.PX_LADO,
+                                                context))
         elif isinstance(capa, QgsVectorLayer):
             if capa.featureCount() == 0:
                 return False, self.tr(
@@ -572,30 +614,23 @@ class ExportarGoogleEarthAlgorithm(QgsProcessingAlgorithm):
                                   cols, filas)
         if mx is not None:
             feedback.pushInfo(
-                f'Resolución: {mx:,.1f} x {my:,.1f} m por píxel'
-                .replace(',', ' '))
+                f'Resolución: {miles(mx, 1)} x {miles(my, 1)} m por píxel')
         if de_la_capa and extension_sospechosa(
                 ext.xMinimum(), ext.yMinimum(),
                 ext.xMaximum(), ext.yMaximum()):
-            proveedor = ''
-            try:
-                proveedor = capa.dataProvider().name() or ''
-            except Exception as e:
-                feedback.pushDebugInfo(f'[proveedor] {e}')
-            remoto = (' Es una capa «{p}», de un servicio remoto: su '
-                      'extensión declarada es la del servicio, no la de lo '
-                      'que usted ve en el lienzo.').format(p=proveedor) \
-                if proveedor in ('wms', 'wcs', 'xyz') else ''
+            # OJO: el numero se formatea APARTE. Meterlo en la frase y
+            # hacer .replace(',', ' ') al final se comio las comas de la
+            # prosa, y el aviso llego al usuario mal escrito.
             feedback.pushWarning(
                 '[!] Se está exportando la extensión COMPLETA de la capa: '
-                '{a:.1f}° x {b:.1f}°, a {mx:,.0f} m por píxel.{r} Si lo que '
-                'quería era una zona concreta, cancele e indique «Ráster: '
+                '{a} x {b} grados, a {mx} m por píxel. Si lo que quería era '
+                'una zona concreta, vuelva a ejecutar indicando «Ráster: '
                 'área a exportar» —el diálogo tiene botones para usar la '
-                'extensión del lienzo o dibujarla—; tal como va, el sitio '
-                'de interés puede ocupar menos de un píxel y en Google '
-                'Earth parecerá que la imagen no cargó.'
-                .format(a=ext.width(), b=ext.height(),
-                        mx=(mx or 0), r=remoto).replace(',', ' '))
+                'extensión del lienzo o dibujarla—; tal como ha salido, el '
+                'sitio de interés puede ocupar menos de un píxel y en '
+                'Google Earth parecerá que la imagen no cargó.'
+                .format(a=miles(ext.width(), 1), b=miles(ext.height(), 1),
+                        mx=miles(mx or 0)))
 
         tmp_tif = destino[:-4] + '_render.tif'
         # El renderizador de la capa va DENTRO de la tubería: es lo que

@@ -11,7 +11,7 @@ about=Cuatro algoritmos de Processing. El primero consulta catalogos STAC public
     El tercero trabaja Sentinel-1 RTC a traves de ASF HyP3, en tres modos: inventario por traza sin consumir creditos, pedido de trabajos RTC con confirmacion explicita de gasto, y colecta de datos con amplitud estacional de retrodispersion. La colecta escribe la amplitud, las DOS medianas por estacion --sin ellas no se sabe sobre que nivel se mide la diferencia--, el recuento de observaciones por pixel y un informe HTML de auditoria autocontenido, y puede reproyectar los productos finales al SRC que se indique, por ejemplo CRTM05. El radar no pierde datos por nube, que es justo la debilidad de la mediana de estacion lluviosa en el camino optico; en cambio responde a la humedad del suelo, asi que es un indicador confundido de otra manera y vale como contraste, no como sustituto. No se mezclan trazas: cada orbita relativa observa con otro angulo de incidencia, de modo que la traza va en el nombre del archivo.
     El cuarto exporta la capa elegida a KMZ y la abre en Google Earth. Un raster se RENDERIZA antes con la simbologia que se ve en QGIS, porque KML no guarda valores sino imagenes pegadas al terreno: volcar un GeoTIFF de NDVI sin renderizar daria una imagen gris ilegible. Lo vectorial va por LIBKML y conserva los atributos; indicando un campo de fecha, cada entidad sale con su TimeStamp y Google Earth muestra el control deslizante de tiempo, util para recorrer una serie de huellas en vez de verlas encimadas. El KMZ lo leen todas las versiones de Google Earth, pero abrirlo solo se puede automatizar en la de escritorio: Earth Web y las apps moviles no permiten que otra aplicacion les entregue un archivo, de modo que para esas el algoritmo deja el archivo y dice como importarlo.
     Datos: Copernicus Sentinel-1 y Sentinel-2 (ESA) y Landsat Collection 2 (USGS/NASA), de acceso abierto; productos RTC generados por ASF DAAC HyP3 con software GAMMA, que requiere una cuenta gratuita de Earthdata Login. Las imagenes de Esri NO son dato abierto: se rigen por el Esri Master License Agreement.
-version=1.0.4
+version=1.0.5
 author=Jorge Fallas
 email=jfallas56@gmail.com
 tracker=https://github.com/jfallas56-CR/BuscadorSTAC/issues
@@ -24,7 +24,23 @@ hasProcessingProvider=yes
 experimental=False
 deprecated=False
 server=False
-changelog=1.0.4 (2026-10-07) Nuevo parametro «Raster: area a exportar».
+changelog=1.0.5 (2026-10-07) El rechazo llega antes de escribir.
+    Una capa servida por la red (wms, wcs, xyz, arcgis*) SIN «Raster:
+    area a exportar» ahora se rechaza en checkParameterValues. Avisar
+    despues no servia de nada: el algoritmo ya habia escrito 2,7 MiB y
+    abierto Google Earth, y el aviso llegaba encima de un resultado que
+    ya no se podia evitar. La extension que declara un WMTS es la del
+    servicio, nunca una intencion del usuario, asi que no hay nada
+    razonable que suponer: se pregunta.
+    Corregido un aviso que se comia las comas de su propia prosa: el
+    numero se formateaba dentro de la frase y luego se hacia
+    replace(",", " ") sobre toda la cadena, de modo que el separador de
+    millar quedaba bien y la puntuacion desaparecia. Los numeros
+    legibles salen ahora con coma decimal y espacio fino de millar, la
+    convencion espanola; las coordenadas siguen con punto, porque se
+    copian a campos donde QGIS espera punto.
+    
+    1.0.4 (2026-10-07) Nuevo parametro «Raster: area a exportar».
     Antes se exportaba siempre la extension completa de la capa. Para un
     raster recortado esta bien, pero un mapa base remoto --WMTS, XYZ,
     WMS-- declara extension MUNDIAL: con 2048 px repartidos entre 360
