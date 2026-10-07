@@ -107,16 +107,38 @@ from osgeo import gdal
 # --------------------------------------------------------------------------
 # Compatibilidad Qt5/Qt6 (QGIS 3.28 LTR / 3.44 LTR / 4.0)
 # --------------------------------------------------------------------------
-try:
-    from qgis.PyQt.QtCore import QMetaType
-    _INT = QMetaType.Type.Int
-    _FLOAT = QMetaType.Type.Double
-    _STR = QMetaType.Type.QString
-except (ImportError, AttributeError):
-    from qgis.PyQt.QtCore import QVariant
-    _INT = QVariant.Int
-    _FLOAT = QVariant.Double
-    _STR = QVariant.String
+
+
+def _tipos_de_campo():
+    """(_INT, _FLOAT, _STR) del tipo que acepte QgsField en ESTE QGIS.
+
+    El tipo de campo pasó de QVariant.Type a QMetaType.Type en QGIS 3.38.
+    Preguntar si QMetaType se puede importar NO sirve para distinguirlos:
+    QMetaType existe también en Qt5, así que QGIS 3.28 —la versión mínima
+    que declara el complemento— se llevaba el tipo nuevo y QgsField lo
+    rechazaba con
+
+        overload 2: argument 1 has unexpected type 'str'
+
+    un mensaje que señala al NOMBRE del campo cuando lo que sobra es el
+    tipo, y que por eso costó leer. Con eso, crear la capa de huellas era
+    imposible en 3.28: no es un detalle de compatibilidad, es el producto
+    principal del complemento.
+
+    Se decide CONSTRUYENDO un QgsField, que es la pregunta de verdad:
+    «¿acepta esta versión este tipo?», y no «¿existe esta clase?».
+    """
+    try:
+        from qgis.PyQt.QtCore import QMetaType
+        QgsField('comprobacion', QMetaType.Type.QString)
+    except (ImportError, AttributeError, TypeError):
+        from qgis.PyQt.QtCore import QVariant
+        return QVariant.Int, QVariant.Double, QVariant.String
+    return (QMetaType.Type.Int, QMetaType.Type.Double,
+            QMetaType.Type.QString)
+
+
+_INT, _FLOAT, _STR = _tipos_de_campo()
 
 
 try:
