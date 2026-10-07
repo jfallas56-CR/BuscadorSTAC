@@ -354,6 +354,76 @@ def _probar_area_pedida(tmp):
     comp('la resolucion del recorte es util (< 500 m/px)',
          mx is not None and mx < 500, f'{mx} m/px')
 
+    _probar_area_con_reproyeccion(tmp)
+
+
+def _probar_area_con_reproyeccion(tmp):
+    """Area pedida Y reproyeccion a la vez: la combinacion del caso real.
+
+    El caso del usuario era una capa en EPSG:900913 --Mercator-- sobre la
+    que hay que pedir un area. Las dos cosas estaban probadas por
+    separado: la reproyeccion en el caso «utm16n», el area pedida en una
+    capa que ya estaba en 4326. Juntas, no. Y es justo donde un error de
+    sistema de coordenadas coloca la imagen en otro sitio sin que nada
+    falle.
+    """
+    from qgis.core import QgsRasterLayer, QgsRectangle
+    from BuscadorSTAC.google_earth_algoritmo import (
+        ExportarGoogleEarthAlgorithm)
+
+    seccion('Raster: area pedida SOBRE una capa que hay que reproyectar')
+    # Capa en Mercator esferico que cubre de 89.8O a 71.9O y de 0 a 17.7N.
+    tif = os.path.join(tmp, 'mercator.tif')
+    _raster_sintetico(tif, bandas=3, epsg=3857,
+                      caja=(-10000000.0, 0.0, -8000000.0, 2000000.0))
+    capa = QgsRasterLayer(tif, 'mercator')
+    if not comp('la capa en EPSG:3857 carga', capa.isValid()):
+        return
+    comp('y declara un SRC distinto de 4326',
+         capa.crs().authid() != 'EPSG:4326', capa.crs().authid())
+
+    pedida = QgsRectangle(-84.0, 9.7, -83.5, 10.2)      # Turrialba
+    alg = ExportarGoogleEarthAlgorithm()
+    alg.initAlgorithm()
+    destino = os.path.join(tmp, 'mercator_recorte.kmz')
+    rec = _Recolector()
+    _r, ok, tb = _correr(alg, {
+        'CAPA': capa, 'NOMBRE': 'turrialba', 'PX_LADO': 512, 'FORMATO': 0,
+        'OPACIDAD': 100, 'ABRIR': False,
+        'EXTENSION': '%f,%f,%f,%f [EPSG:4326]' % (
+            pedida.xMinimum(), pedida.xMaximum(),
+            pedida.yMinimum(), pedida.yMaximum()),
+        'SALIDA': destino,
+    }, rec)
+    if not comp('la exportacion reproyectada y recortada termina sin error',
+                ok, (tb.strip().splitlines()[-1] if tb else _resumen(rec))):
+        return
+    todo = ' '.join(rec.info)
+    comp('la tuberia reproyecta', 'Reproyecci' in todo, todo[-200:])
+    if not comp('el KMZ existe', os.path.isfile(destino), destino):
+        return
+
+    caja = _caja_nivel0(destino)
+    if not comp('se lee la caja del nivel 0', caja is not None, ''):
+        return
+    n, s, e, w = caja
+    comp('el KMZ cae sobre el area pedida, no sobre la capa entera',
+         (abs(w - pedida.xMinimum()) < 0.02
+          and abs(e - pedida.xMaximum()) < 0.02
+          and abs(s - pedida.yMinimum()) < 0.02
+          and abs(n - pedida.yMaximum()) < 0.02),
+         'pedido W=%.3f S=%.3f E=%.3f N=%.3f; KMZ W=%.3f S=%.3f E=%.3f '
+         'N=%.3f' % (pedida.xMinimum(), pedida.yMinimum(),
+                     pedida.xMaximum(), pedida.yMaximum(), w, s, e, n))
+
+    # Que la imagen tenga contenido: sin el proyector saldria transparente.
+    with zipfile.ZipFile(destino) as z:
+        pngs = [m for m in z.namelist() if m.endswith('.png')]
+    comp('el KMZ reproyectado trae imagenes', bool(pngs),
+         'sin PNG no hay nada que ver')
+    hay, motivo = _imagen_con_contenido(destino, pngs, tmp)
+    comp('y la imagen tiene contenido, no es transparente', hay, motivo)
+
 
 def _caja_nivel0(kmz):
     """(N, S, E, W) del nivel 0 de un super-overlay, o None."""
