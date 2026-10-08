@@ -746,6 +746,87 @@ def comp_metodos_resueltos(inf):
                   'no se resuelven: ' + '; '.join(sorted(set(huerfanos))))
 
 
+def comp_claves_de_banda(inf):
+    """Ninguna tabla indexada por la etiqueta que ve el usuario.
+
+    Era la causa de un fallo real: ALIAS, SUFIJO, RES_NATIVA, los indices
+    espectrales y las composiciones RGB estaban indexados por cadenas como
+    «red (B04, 10 m)». Consecuencias, las dos vistas en produccion:
+
+      - La etiqueta no se podia corregir sin romper las busquedas, asi que
+        decia «B04, 10 m» tambien con Landsat, donde el rojo es B4 --B3 en
+        TM y ETM+-- y mide 30 m. Y ese mismo texto acababa en el NOMBRE
+        DEL ARCHIVO.
+      - Al migrar a clave estable, las tablas que se quedaron atras no
+        dieron error: la resolucion de assets cae a «usa la clave tal
+        cual», no encuentra nada y el indice sencillamente no se calcula.
+
+    Aqui se comprueban las dos mitades: que no quede ningun literal con la
+    forma antigua, y que toda banda citada en COMPOSICIONES sea una clave
+    de verdad.
+    """
+    inf.seccion('Claves de banda')
+    forma_vieja = re.compile(r'^[a-z0-9]+ \(B[0-9]')
+    viejos = []
+    for archivo in sorted(os.listdir(DIR_PAQUETE)):
+        if not archivo.endswith('.py'):
+            continue
+        try:
+            arbol = ast.parse(_texto(os.path.join(DIR_PAQUETE, archivo)))
+        except SyntaxError:
+            continue
+        for nodo in ast.walk(arbol):
+            if (isinstance(nodo, ast.Constant)
+                    and isinstance(nodo.value, str)
+                    and forma_vieja.match(nodo.value)):
+                viejos.append(f'{archivo}:{nodo.lineno} {nodo.value!r}')
+    inf.comprobar(
+        'ninguna tabla usa la etiqueta visible como clave', not viejos,
+        'forma antigua «nombre (Bxx, N m)»: ' + '; '.join(viejos))
+
+    # Y que las composiciones citen bandas que existan.
+    # Se carga core.py SUELTO, por ruta: importar el paquete ejecutaria
+    # __init__.py, que trae QGIS, y aqui no lo hay. core.py no importa
+    # nada del proyecto, asi que se sostiene solo --esa es su regla.
+    try:
+        import importlib.util
+        _spec = importlib.util.spec_from_file_location(
+            '_core_preflight', os.path.join(DIR_PAQUETE, 'core.py'))
+        _core = importlib.util.module_from_spec(_spec)
+        _spec.loader.exec_module(_core)
+    except Exception as e:                      # pragma: no cover
+        inf.comprobar('core.py se puede cargar suelto, sin QGIS', False,
+                      str(e))
+        return
+    validas = set(_core.CLAVES_BANDAS)
+    ruta = os.path.join(DIR_PAQUETE, 'buscar_sentinel2_algoritmo.py')
+    citadas, malas = 0, []
+    try:
+        arbol = ast.parse(_texto(ruta))
+    except (SyntaxError, OSError) as e:
+        inf.comprobar('se pudo leer el algoritmo de busqueda', False, str(e))
+        return
+    for nodo in ast.walk(arbol):
+        if not (isinstance(nodo, ast.Assign)
+                and any(isinstance(d, ast.Name) and d.id == 'COMPOSICIONES'
+                        for d in nodo.targets)):
+            continue
+        for fila in getattr(nodo.value, 'elts', []):
+            partes = getattr(fila, 'elts', [])
+            if len(partes) < 3:
+                continue
+            for b in getattr(partes[2], 'elts', []):
+                if isinstance(b, ast.Constant) and isinstance(b.value, str):
+                    citadas += 1
+                    if b.value not in validas:
+                        malas.append(b.value)
+    if not inf.comprobar(f'se leyeron {citadas} banda(s) de COMPOSICIONES',
+                         citadas > 0):
+        return
+    inf.comprobar('toda banda de COMPOSICIONES es una clave real',
+                  not malas, 'no existen: ' + ', '.join(sorted(set(malas))))
+
+
 def comp_padres_de_campo(inf):
     """Ningun parametro de campo cuelga de un padre que pueda ser raster.
 
@@ -1132,6 +1213,7 @@ def main(argv=None):
     comp_ids_algoritmos(inf)
     comp_tildes(inf)
     comp_metodos_resueltos(inf)
+    comp_claves_de_banda(inf)
     comp_padres_de_campo(inf)
     comp_ayuda_parametros(inf)
     comp_escaneo(inf)

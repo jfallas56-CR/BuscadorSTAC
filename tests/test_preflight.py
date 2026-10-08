@@ -630,3 +630,39 @@ def test_un_padre_vectorial_no_da_falso_positivo(copia):
     assert not _dice(datos, 'cuelgan de un padre vectorial'), (
         'un padre QgsProcessingParameterVectorLayer es seguro y no debe '
         'bloquear. Bloqueantes: %r' % _bloqueantes(datos))
+
+
+def test_detecta_una_tabla_indexada_por_la_etiqueta(copia):
+    """La forma antigua «red (B04, 10 m)» como clave tiene que bloquear."""
+    ruta = os.path.join(copia, PAQUETE, 'core.py')
+    fuente = open(ruta, encoding='utf-8').read()
+    ancla = 'TC_ORDEN_BANDAS = (\n'
+    assert ancla in fuente, 'cambio la tabla de referencia de la prueba'
+    roto = fuente.replace(
+        ancla, ancla + "    'red (B04, 10 m)',\n", 1)
+    open(ruta, 'w', encoding='utf-8').write(roto)
+
+    _, datos = _correr(copia)
+    assert _dice(datos, 'etiqueta visible como clave'), (
+        'preflight tiene que bloquear: esa cadena acabaria en el nombre '
+        'del archivo y atribuiria una banda de Sentinel-2 a Landsat. '
+        'Bloqueantes: %r' % _bloqueantes(datos))
+
+
+def test_detecta_una_composicion_que_cita_una_banda_inexistente(copia):
+    """Al migrar a clave estable, una banda no migrada no da error solo."""
+    ruta = os.path.join(copia, PAQUETE, 'buscar_sentinel2_algoritmo.py')
+    fuente = open(ruta, encoding='utf-8').read()
+    ancla = '    ("Color natural — rojo/verde/azul", "NAT",\n     ("red", "green", "blue")),'
+    assert ancla in fuente, 'cambio la composicion de referencia'
+    roto = fuente.replace(
+        ancla,
+        '    ("Color natural — rojo/verde/azul", "NAT",\n'
+        '     ("rojo_inventado", "green", "blue")),', 1)
+    open(ruta, 'w', encoding='utf-8').write(roto)
+
+    _, datos = _correr(copia)
+    assert _dice(datos, 'banda de COMPOSICIONES es una clave real'), (
+        'preflight tiene que bloquear: la busqueda del asset no encontraria '
+        'nada y la composicion saldria vacia sin un solo error. '
+        'Bloqueantes: %r' % _bloqueantes(datos))

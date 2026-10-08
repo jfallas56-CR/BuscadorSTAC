@@ -567,8 +567,8 @@ def test_periodos_sin_datos_informa_los_huecos():
 # _res_nativa
 # =====================================================================
 def test_res_nativa_distingue_sensor():
-    assert core._res_nativa('red (B04, 10 m)', 's2') == 10.0
-    assert core._res_nativa('red (B04, 10 m)', 'ls') == core.RES_LS
+    assert core._res_nativa('red', 's2') == 10.0
+    assert core._res_nativa('red', 'ls') == core.RES_LS
     assert core._res_nativa('clave inventada', 'ls') == core.RES_LS
 
 
@@ -1309,3 +1309,37 @@ def test_landsat_no_tiene_borde_rojo_ni_tci():
 def test_hay_una_etiqueta_por_clave_y_sin_repetir():
     assert len(core.ETIQUETAS_BANDAS) == len(core.CLAVES_BANDAS)
     assert len(set(core.ETIQUETAS_BANDAS)) == len(core.ETIQUETAS_BANDAS)
+
+
+def test_toda_banda_citada_en_core_es_una_clave_real():
+    """La prueba que habria cazado el fallo entero.
+
+    Al pasar las tablas de bandas a clave estable se migraron ALIAS,
+    SUFIJO y las etiquetas, pero NO los indices espectrales, ni
+    TC_ORDEN_BANDAS, ni RES_NATIVA, que seguian indexados por la etiqueta
+    antigua. Como la resolucion de assets cae a «usa la clave tal cual»
+    cuando no la conoce, el fallo no era una excepcion: la busqueda
+    simplemente no encontraba el asset y el indice no se calculaba.
+    """
+    validas = set(core.CLAVES_BANDAS)
+    for etiqueta, sufijo, bandas, _solo_s2 in core.INDICES_ESPECTRALES:
+        for b in bandas:
+            assert b in validas, f'{sufijo} cita «{b}», que no es una banda'
+    for b in core.TC_ORDEN_BANDAS:
+        assert b in validas, b
+    for b in core.RES_NATIVA:
+        assert b in validas, b
+
+
+def test_res_nativa_no_puede_desviarse_de_la_tabla_de_bandas():
+    """Dos sitios con la resolucion de Sentinel-2: tienen que coincidir."""
+    for clave in core.CLAVES_BANDAS:
+        esperado = float(
+            [b[4] for b in core._BANDAS if b[0] == clave][0])
+        assert core.RES_NATIVA[clave] == esperado, clave
+        assert core._res_nativa(clave, 's2') == esperado, clave
+
+
+def test_en_landsat_toda_banda_mide_30_m():
+    for clave in core.CLAVES_BANDAS:
+        assert core._res_nativa(clave, 'ls') == 30.0, clave

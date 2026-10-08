@@ -23,7 +23,7 @@ grupo, de modo que aparezca junto a los proveedores nativos de QGIS y quede
 disponible para modelos y para qgis_process desde la línea de órdenes.
 
 Autor  : Jorge Fallas (jfallas56@gmail.com)
-Versión: 1.1.0
+Versión: 1.1.1
 Licencia: GPL v2 o posterior
 """
 
@@ -48,7 +48,7 @@ class BuscarSentinel2Provider(QgsProcessingProvider):
     una vez y no se toca entre versiones.
     """
 
-    VERSION = '1.1.0'
+    VERSION = '1.1.1'
     AUTOR = AUTOR
     AUTOR_EMAIL = AUTOR_EMAIL
 

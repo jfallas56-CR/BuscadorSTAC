@@ -25,7 +25,7 @@ cambió ni una línea de ellos.
 
 Autor    : Jorge Fallas (jfallas56@gmail.com)
 Licencia : GPL v2 o posterior
-Versión  : 1.1.0
+Versión  : 1.1.1
 """
 
 import datetime
@@ -74,12 +74,12 @@ QA_BITS_NUBOSOS = (
 # Para ETM+ es práctica extendida aplicar Crist, dado que las bandas de ETM+ y
 # TM son casi idénticas; el archivo JSON de coeficientes permite hacerlo.
 TC_ORDEN_BANDAS = (
-    "blue (B02, 10 m)",
-    "green (B03, 10 m)",
-    "red (B04, 10 m)",
-    "nir (B08, 10 m)",
-    "swir16 (B11, 20 m)",
-    "swir22 (B12, 20 m)",
+    'blue',
+    'green',
+    'red',
+    'nir',
+    'swir16',
+    'swir22',
 )
 
 # --------------------------------------------------------------------------
@@ -91,19 +91,19 @@ TC_ORDEN_BANDAS = (
 # Sentinel-2 y Landsat siempre que se calculen sobre reflectancia, no sobre DN.
 INDICES_ESPECTRALES = [
     ("NDVI — vigor general (NIR, Rojo)", "NDVI",
-     ("nir (B08, 10 m)", "red (B04, 10 m)"), False),
+     ('nir', 'red'), False),
     ("SAVI — NDVI ajustado por suelo, L=0.5", "SAVI",
-     ("nir (B08, 10 m)", "red (B04, 10 m)"), False),
+     ('nir', 'red'), False),
     ("NDMI — humedad del dosel (NIR, SWIR1)", "NDMI",
-     ("nir08 (B8A, 20 m)", "swir16 (B11, 20 m)"), False),
+     ('nir08', 'swir16'), False),
     ("NBR — estructura y quema (NIR, SWIR2)", "NBR",
-     ("nir08 (B8A, 20 m)", "swir22 (B12, 20 m)"), False),
+     ('nir08', 'swir22'), False),
     ("MSI — estrés hídrico (SWIR1/NIR)", "MSI",
-     ("swir16 (B11, 20 m)", "nir08 (B8A, 20 m)"), False),
+     ('swir16', 'nir08'), False),
     ("NDRE — clorofila borde rojo (solo Sentinel-2)", "NDRE",
-     ("nir08 (B8A, 20 m)", "rededge1 (B05, 20 m)"), True),
+     ('nir08', 'rededge1'), True),
     ("CIre — índice de clorofila borde rojo (solo Sentinel-2)", "CIre",
-     ("rededge3 (B07, 20 m)", "rededge1 (B05, 20 m)"), True),
+     ('rededge3', 'rededge1'), True),
     ("Tasseled Cap — Wetness (humedad y sombra de dosel)", "TCW",
      TC_ORDEN_BANDAS, False),
     ("Tasseled Cap — Greenness", "TCG", TC_ORDEN_BANDAS, False),
@@ -136,18 +136,18 @@ def _res_nativa(clave_logica, familia="s2"):
 # Resolución nativa en metros por asset. Determina xRes/yRes de salida y evita
 # que GDAL elija un tamaño de píxel arbitrario vía SuggestedWarpOutput.
 RES_NATIVA = {
-    "visual (RGB 8-bit)": 10.0,
-    "blue (B02, 10 m)": 10.0,
-    "green (B03, 10 m)": 10.0,
-    "red (B04, 10 m)": 10.0,
-    "rededge1 (B05, 20 m)": 20.0,
-    "rededge2 (B06, 20 m)": 20.0,
-    "rededge3 (B07, 20 m)": 20.0,
-    "nir (B08, 10 m)": 10.0,
-    "nir08 (B8A, 20 m)": 20.0,
-    "swir16 (B11, 20 m)": 20.0,
-    "swir22 (B12, 20 m)": 20.0,
-    "scl (máscara de clases)": 20.0,
+    'visual': 10.0,
+    'blue': 10.0,
+    'green': 10.0,
+    'red': 10.0,
+    'rededge1': 20.0,
+    'rededge2': 20.0,
+    'rededge3': 20.0,
+    'nir': 10.0,
+    'nir08': 20.0,
+    'swir16': 20.0,
+    'swir22': 20.0,
+    'scl': 20.0,
 }
 
 

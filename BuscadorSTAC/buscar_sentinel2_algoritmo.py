@@ -27,7 +27,7 @@ No requiere credenciales para Earth Search. Planetary Computer usa un
 token SAS anónimo gratuito que el algoritmo solicita automáticamente.
 
 Autor  : Jorge Fallas (jfallas56@gmail.com)
-Versión: 1.1.0
+Versión: 1.1.1
 
 Historial:
     1.0.0 (2026-10-02): Primera versión pública.
@@ -984,7 +984,7 @@ def _geom_desde_geojson(gj):
 # --------------------------------------------------------------------------
 class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
 
-    VERSION = 'v1.1.0'
+    VERSION = 'v1.1.1'
 
     # Lógica pura, definida en core.py y reenganchada aquí como
     # staticmethod. Así cada sitio de llamada sigue siendo
@@ -1119,7 +1119,7 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             "solo descarga los bloques visibles.<br>"
             "• <i>Descargar recorte</i>: escribe un GeoTIFF comprimido por banda "
             "y escena, recortado al AOI.<br><br>"
-            "<b>Sensores:</b> Sentinel-2 L2A (10-20 m, desde 2017) y Landsat Collection 2 Nivel 2 (30 m, desde 1982). Las claves de banda son comunes a ambos, de modo que las composiciones RGB funcionan igual; Landsat no tiene red edge ni asset TCI, así que la vista previa se compone desde R/G/B y esas composiciones quedan vetadas. La nubosidad dentro del AOI se mide con SCL en Sentinel-2 y con los bits de QA_PIXEL en Landsat.<br><br>"  # noqa: E501
+            "<b>Sensores:</b> Sentinel-2 L2A (10-20 m, desde 2017) y Landsat Collection 2 Nivel 2 (30 m, desde 1982). Las claves de banda son comunes a ambos, de modo que las composiciones RGB funcionan igual; Landsat no tiene red edge ni asset TCI, así que la vista previa se compone desde R/G/B y esas composiciones quedan vetadas. La nubosidad dentro del AOI se mide con SCL en Sentinel-2 y con los bits de QA_PIXEL en Landsat. Los recortes se nombran con el número real del sensor: «_B04» en Sentinel-2 y «_RED» en Landsat, donde el número cambia entre L4/5/7 y L8-9 y poner uno solo sería falso.<br><br>"  # noqa: E501
             "<b>Flujo recomendado en Costa Rica (nubosidad alta):</b><br>"
             "1. Ejecute en modo <i>Solo catálogo</i> con miniaturas activadas "
             "y nubosidad de escena permisiva (50-70 %). Marque «Capa de "
@@ -3549,7 +3549,7 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
         la vista previa hay que componerla y estirarla aquí. Las bandas son
         enteros de 16 bits en DN de reflectancia, no bytes listos para mostrar.
         """
-        bandas = ("red (B04, 10 m)", "green (B03, 10 m)", "blue (B02, 10 m)")
+        bandas = ('red', 'green', 'blue')
         rutas = self._hrefs_rgb(item, bandas, token, firmar, feedback)
         if not rutas:
             return None

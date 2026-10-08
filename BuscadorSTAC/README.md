@@ -1,6 +1,6 @@
 # Buscador STAC: Sentinel, Landsat y Esri Wayback
 
-![version](https://img.shields.io/badge/version-1.1.0-blue)
+![version](https://img.shields.io/badge/version-1.1.1-blue)
 ![QGIS](https://img.shields.io/badge/QGIS-%E2%89%A5%203.28-green)
 ![licencia](https://img.shields.io/badge/licencia-GPL%20v2%2B-orange)
 
@@ -488,6 +488,7 @@ Copyright © 2026 Jorge Fallas <jfallas56@gmail.com>
 
 | Versión | Fecha | Cambios |
 |---|---|---|
+| 1.1.1 | 2026-10-08 | Completa la migración de 1.1.0: los índices espectrales y la miniatura compuesta seguían usando las claves antiguas y fallaban en silencio. Preflight lo comprueba ahora. |
 | 1.1.0 | 2026-10-08 | Las etiquetas y los nombres de archivo dejan de atribuir bandas de Sentinel-2 a escenas de Landsat. Una sola tabla de bandas, con clave estable, y sufijo de archivo por sensor. |
 | 1.0.5 | 2026-10-07 | Una capa servida por la red sin área pedida se rechaza en la validación, antes de escribir nada. Corregido un aviso que perdía las comas de su propia prosa. |
 | 1.0.4 | 2026-10-07 | Nuevo «Ráster: área a exportar». Un mapa base remoto declara extensión mundial, así que exportarlo entero daba 19 km por píxel y en Earth parecía que no cargaba. Se informan los metros por píxel. |
