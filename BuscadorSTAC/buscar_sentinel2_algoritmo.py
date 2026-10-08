@@ -27,7 +27,7 @@ No requiere credenciales para Earth Search. Planetary Computer usa un
 token SAS anónimo gratuito que el algoritmo solicita automáticamente.
 
 Autor  : Jorge Fallas (jfallas56@gmail.com)
-Versión: 1.0.5
+Versión: 1.1.0
 
 Historial:
     1.0.0 (2026-10-02): Primera versión pública.
@@ -100,7 +100,9 @@ from .core import (
     _escribir_plantilla_tc, _items_desde_capa, _mascaras_qa_pixel,
     _memoria_estimada, _parsear_limites, _parsear_meses,
     _periodos_sin_datos, _procedencia_huellas, _reducir_por_periodo,
-    _res_nativa, _salida_volatil, _tamano_salida, _validar_ortonormalidad)
+    _res_nativa, _salida_volatil, _tamano_salida, _validar_ortonormalidad,
+    CLAVES_BANDAS, ETIQUETAS_BANDAS, SIN_EQUIVALENTE_LS,
+    alias_banda, bandas_duplicadas, etiqueta_banda, sufijo_banda)
 
 from osgeo import gdal
 
@@ -179,45 +181,11 @@ PC_TOKEN_URL = "https://planetarycomputer.microsoft.com/api/sas/v1/token/{col}" 
 
 # Nombres lógicos -> posibles claves de asset según catálogo.
 # Earth Search v1 usa nombres comunes; Planetary Computer usa B02/B03/...
-ALIAS_ASSETS = {
-    "visual (RGB 8-bit)": ["visual", "TCI", "tci", "visual-10m"],
-    "blue (B02, 10 m)": ["blue", "B02"],
-    "green (B03, 10 m)": ["green", "B03"],
-    "red (B04, 10 m)": ["red", "B04"],
-    "rededge1 (B05, 20 m)": ["rededge1", "B05"],
-    "rededge2 (B06, 20 m)": ["rededge2", "B06"],
-    "rededge3 (B07, 20 m)": ["rededge3", "B07"],
-    "nir (B08, 10 m)": ["nir", "B08"],
-    "nir08 (B8A, 20 m)": ["nir08", "B8A"],
-    "swir16 (B11, 20 m)": ["swir16", "B11"],
-    "swir22 (B12, 20 m)": ["swir22", "B12"],
-    "scl (máscara de clases)": ["scl", "SCL"],
-}
-CLAVES_BANDAS = list(ALIAS_ASSETS.keys())
+# Las tablas de bandas viven en core.py: una sola, con clave estable.
+# Antes habia cuatro aqui, las cuatro indexadas POR LA ETIQUETA, y por
+# eso la etiqueta no se podia corregir ni el sufijo del archivo podia
+# depender del sensor. Ver el comentario de _BANDAS en core.py.
 
-# Equivalencias para Landsat Collection 2 Nivel 2. Se conservan las mismas
-# claves lógicas que Sentinel-2 para que las composiciones RGB funcionen en
-# ambos sensores sin duplicar la interfaz. Las bandas que Landsat no tiene
-# (red edge, TCI) quedan con lista vacía y se reportan como ausentes.
-ALIAS_LS = {
-    "visual (RGB 8-bit)": [],
-    "blue (B02, 10 m)": ["blue"],
-    "green (B03, 10 m)": ["green"],
-    "red (B04, 10 m)": ["red"],
-    "rededge1 (B05, 20 m)": [],
-    "rededge2 (B06, 20 m)": [],
-    "rededge3 (B07, 20 m)": [],
-    "nir (B08, 10 m)": ["nir08"],
-    "nir08 (B8A, 20 m)": ["nir08"],
-    "swir16 (B11, 20 m)": ["swir16"],
-    "swir22 (B12, 20 m)": ["swir22"],
-    "scl (máscara de clases)": ["qa_pixel"],
-}
-
-SIN_EQUIVALENTE_LS = [k for k, v in ALIAS_LS.items() if not v]
-
-# Prefijo de nombre de archivo según la fuente. Antes estaba fijo en «S2_»,
-# de modo que las descargas de Landsat quedaban rotuladas como Sentinel-2.
 PREFIJO_FUENTE = {
     's2': 'Sent',
     'ls': 'Lands',
@@ -241,42 +209,31 @@ LS_ESCALA_SUMA = -0.2
 # recortar marcaría el exterior de la escena como «con dato y despejado».
 QA_RELLENO = 1
 
-SUFIJO_BANDA = {
-    "visual (RGB 8-bit)": "TCI",
-    "blue (B02, 10 m)": "B02",
-    "green (B03, 10 m)": "B03",
-    "red (B04, 10 m)": "B04",
-    "rededge1 (B05, 20 m)": "B05",
-    "rededge2 (B06, 20 m)": "B06",
-    "rededge3 (B07, 20 m)": "B07",
-    "nir (B08, 10 m)": "B08",
-    "nir08 (B8A, 20 m)": "B8A",
-    "swir16 (B11, 20 m)": "B11",
-    "swir22 (B12, 20 m)": "B12",
-    "scl (máscara de clases)": "SCL",
-}
-
 
 # Composiciones RGB. Cada entrada: (etiqueta, sufijo, (banda_R, banda_G, banda_B))
 # Se pueden seleccionar varias a la vez; no seleccionar ninguna equivale a
 # trabajar con las bandas sueltas del parámetro «Bandas / assets individuales».
 COMPOSICIONES = [
-    ("Color natural — B04/B03/B02", "NAT",
-     ("red (B04, 10 m)", "green (B03, 10 m)", "blue (B02, 10 m)")),
-    ("Infrarrojo color — B08/B04/B03", "IRC",
-     ("nir (B08, 10 m)", "red (B04, 10 m)", "green (B03, 10 m)")),
-    ("Agricultura — B11/B08/B02", "AGR",
-     ("swir16 (B11, 20 m)", "nir (B08, 10 m)", "blue (B02, 10 m)")),
-    ("Vegetación sana — B8A/B11/B02", "VEG",
-     ("nir08 (B8A, 20 m)", "swir16 (B11, 20 m)", "blue (B02, 10 m)")),
-    ("Análisis de vegetación — B11/B08/B04", "ANV",
-     ("swir16 (B11, 20 m)", "nir (B08, 10 m)", "red (B04, 10 m)")),
-    ("Falso color urbano / SWIR — B12/B11/B04", "URB",
-     ("swir22 (B12, 20 m)", "swir16 (B11, 20 m)", "red (B04, 10 m)")),
-    ("Penetración atmosférica — B12/B11/B8A", "PEN",
-     ("swir22 (B12, 20 m)", "swir16 (B11, 20 m)", "nir08 (B8A, 20 m)")),
-    ("Geología — B12/B11/B02", "GEO",
-     ("swir22 (B12, 20 m)", "swir16 (B11, 20 m)", "blue (B02, 10 m)")),
+    # La etiqueta NO lleva numeros de banda: serian los de Sentinel-2 y
+    # enganarian con Landsat, donde ademas la numeracion cambia entre
+    # TM/ETM+ y OLI. Los nombres comunes valen en los dos sensores, y la
+    # tabla por sensor esta en la ayuda del parametro.
+    ("Color natural — rojo/verde/azul", "NAT",
+     ("red", "green", "blue")),
+    ("Infrarrojo color — NIR/rojo/verde", "IRC",
+     ("nir", "red", "green")),
+    ("Agricultura — SWIR 1/NIR/azul", "AGR",
+     ("swir16", "nir", "blue")),
+    ("Vegetación sana — NIR estrecho/SWIR 1/azul", "VEG",
+     ("nir08", "swir16", "blue")),
+    ("Análisis de vegetación — SWIR 1/NIR/rojo", "ANV",
+     ("swir16", "nir", "red")),
+    ("Falso color urbano / SWIR — SWIR 2/SWIR 1/rojo", "URB",
+     ("swir22", "swir16", "red")),
+    ("Penetración atmosférica — SWIR 2/SWIR 1/NIR estrecho", "PEN",
+     ("swir22", "swir16", "nir08")),
+    ("Geología — SWIR 2/SWIR 1/azul", "GEO",
+     ("swir22", "swir16", "blue")),
 ]
 
 # Estrategias de selección temporal. La segunda posición es el valor enviado a
@@ -434,8 +391,7 @@ def _resolver_asset_obj(assets, clave_logica, familia="s2"):
     metadatos de radiometría (raster:bands) que hacen falta para convertir a
     reflectancia sin adivinar.
     """
-    tabla = ALIAS_LS if familia == "ls" else ALIAS_ASSETS
-    alias = tabla.get(clave_logica, [] if familia == "ls" else [clave_logica])
+    alias = alias_banda(clave_logica, familia)
     for nombre in alias:
         item = assets.get(nombre)
         if item and item.get("href"):
@@ -1028,7 +984,7 @@ def _geom_desde_geojson(gj):
 # --------------------------------------------------------------------------
 class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
 
-    VERSION = 'v1.0.5'
+    VERSION = 'v1.1.0'
 
     # Lógica pura, definida en core.py y reenganchada aquí como
     # staticmethod. Así cada sitio de llamada sigue siendo
@@ -1510,9 +1466,15 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             'elegida. Puede marcar varias: con N escenas y M composiciones se '
             'producen N x M capas, nombradas con el sufijo de cada una (IRC, '
             'AGR, URB…), de modo que se pueden comparar lado a lado.<br>'
-            'Infrarrojo color (B08/B04/B03) resalta vegetación en rojo; '
-            'Agricultura (B11/B08/B02) separa cultivos de bosque; '
-            'SWIR (B12/B11/B04) penetra humo y delimita cicatrices de fuego.<br>'
+            'Infrarrojo color (NIR/rojo/verde) resalta vegetación en rojo; '
+            'Agricultura (SWIR 1/NIR/azul) separa cultivos de bosque; '
+            'SWIR (SWIR 2/SWIR 1/rojo) penetra humo y delimita cicatrices de '
+            'fuego.<br>'
+            'Las composiciones se nombran por banda común y no por número, '
+            'porque los números serían los de Sentinel-2 y en Landsat son '
+            'otros —y cambian entre L4/5/7 y L8-9—. La tabla de '
+            'equivalencias está en la ayuda de «Bandas / assets '
+            'individuales».<br>'
             'Sin ninguna marcada se usan las bandas sueltas del parámetro '
             'siguiente.<br>'
             'Esto son capas RGB para interpretación visual. Los valores '
@@ -1522,17 +1484,40 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
 
         p = QgsProcessingParameterEnum(
             self.BANDAS, self.tr('Bandas / assets individuales'),
-            options=CLAVES_BANDAS, allowMultiple=True, defaultValue=[],
+            options=list(ETIQUETAS_BANDAS), allowMultiple=True,
+            defaultValue=[],
             optional=True)
         p.setHelp(self.tr(
             'Se usa solo si NO ha marcado ninguna composición RGB, y si el '
             'modo no es «Solo catálogo».<br>'
-            'Las etiquetas llevan la nomenclatura de Sentinel-2, pero las '
-            'claves son comunes: con el catálogo Landsat, blue/green/red '
-            'resuelven a B2/B3/B4 en L8-9 y a B1/B2/B3 en L4/5/7; nir resuelve '
-            'a nir08 (B5 en L8-9, B4 en L4/5/7); swir16 y swir22 a B6/B7 y '
-            'B5/B7 respectivamente. «visual» (TCI) y las tres red edge existen '
-            'únicamente en Sentinel-2.'))
+            'Cada etiqueta dice lo que vale en los DOS sensores, porque no '
+            'es lo mismo: «rojo — S2 B04 10 m · Landsat red 30 m».<br><br>'
+            '<b>Equivalencias</b><br>'
+            '<table border="0" cellpadding="2">'
+            '<tr><td><b></b></td><td><b>Sentinel-2</b></td>'
+            '<td><b>Landsat L8-9</b></td><td><b>Landsat L4/5/7</b></td></tr>'
+            '<tr><td>azul</td><td>B02, 10 m</td><td>B2</td><td>B1</td></tr>'
+            '<tr><td>verde</td><td>B03, 10 m</td><td>B3</td><td>B2</td></tr>'
+            '<tr><td>rojo</td><td>B04, 10 m</td><td>B4</td><td>B3</td></tr>'
+            '<tr><td>NIR</td><td>B08, 10 m</td><td>B5</td><td>B4</td></tr>'
+            '<tr><td>NIR estrecho</td><td>B8A, 20 m</td><td>B5</td>'
+            '<td>B4</td></tr>'
+            '<tr><td>SWIR 1</td><td>B11, 20 m</td><td>B6</td><td>B5</td></tr>'
+            '<tr><td>SWIR 2</td><td>B12, 20 m</td><td>B7</td><td>B7</td></tr>'
+            '</table>'
+            'Todas las de Landsat miden <b>30 m</b>. Por eso la etiqueta no '
+            'trae número de banda para Landsat: cambiaría según el satélite, '
+            'y la colección va de L4 a L9.<br><br>'
+            '<b>NIR y NIR estrecho son la misma banda en Landsat.</b> En '
+            'Sentinel-2 son B08 (842 nm, 10 m) y B8A (865 nm, 20 m), '
+            'distintas; Landsat solo tiene una, así que marcar las dos se '
+            'rechaza en vez de escribir dos veces los mismos píxeles.<br><br>'
+            '«visual» (TCI) y las tres de borde rojo existen únicamente en '
+            'Sentinel-2.<br><br>'
+            'El nombre del archivo lleva el número real del sensor: '
+            '<code>Sent2C_…_B04.tif</code> en Sentinel-2 y '
+            '<code>Lands8_…_RED.tif</code> en Landsat, con el nombre común, '
+            'que es el único correcto para toda la familia.'))
         self.addParameter(p)
 
         p = QgsProcessingParameterEnum(
@@ -1936,8 +1921,8 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             vetadas = []
             for idx in comps:
                 etiqueta, _, bandas_comp = COMPOSICIONES[idx]
-                faltan = [b for b in (bandas_comp or ())
-                          if not ALIAS_LS.get(b)]
+                faltan = [etiqueta_banda(b) for b in (bandas_comp or ())
+                          if b in SIN_EQUIVALENTE_LS]
                 if faltan:
                     vetadas.append(f"«{etiqueta}» (necesita {', '.join(faltan)})")
             if vetadas:
@@ -1952,8 +1937,26 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             # marcadas; validarlas siempre rechazaba ejecuciones válidas por
             # culpa del valor por defecto del parámetro.
             if not comps:
-                sueltas = [CLAVES_BANDAS[i] for i in bandas
-                           if not ALIAS_LS.get(CLAVES_BANDAS[i])]
+                # Dos claves distintas pueden ser la MISMA banda en
+                # Landsat: «nir» y «nir08» son las dos su unico infrarrojo
+                # cercano. Antes eso escribia el mismo raster dos veces,
+                # con nombres que sugerian longitudes de onda distintas.
+                elegidas = [CLAVES_BANDAS[i] for i in bandas]
+                repetidas = bandas_duplicadas(elegidas, 'ls')
+                if repetidas:
+                    detalle = '; '.join(
+                        '{} → todas son «{}»'.format(
+                            ', '.join('«%s»' % etiqueta_banda(c)
+                                      for c in cs), a)
+                        for a, cs in repetidas)
+                    return False, (
+                        '[!] En Landsat estas bandas son la misma, así que '
+                        'se escribirían archivos distintos con los mismos '
+                        'píxeles: {d}. Deje marcada solo una.'
+                    ).format(d=detalle)
+                sueltas = [etiqueta_banda(CLAVES_BANDAS[i])
+                           for i in bandas
+                           if CLAVES_BANDAS[i] in SIN_EQUIVALENTE_LS]
                 if sueltas:
                     return False, (
                         f"[!] Bandas sin equivalente en Landsat: "
@@ -2771,7 +2774,8 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
         anio_mes = fecha_iso[:7].replace('-', '_') or '0000_00'
         dia = fecha_iso[8:10] or '00'
         malla = self._tile_mgrs(props) or 'NA'
-        sufijo = sufijo_comp if sufijo_comp else SUFIJO_BANDA.get(banda, 'X')
+        sufijo = (sufijo_comp if sufijo_comp
+                  else sufijo_banda(banda, self._familia))
         ident = str(item.get('id', ''))
 
         clave = (ident, sufijo)
@@ -2947,9 +2951,8 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
         canal = ('R', 'G', 'B')
         partes = []
         for i, banda in enumerate(bandas_rgb):
-            tabla = ALIAS_LS if self._familia == 'ls' else ALIAS_ASSETS
             resuelto = None
-            for nombre in tabla.get(banda, []):
+            for nombre in alias_banda(banda, self._familia):
                 if nombre in assets:
                     resuelto = nombre
                     break
@@ -3360,13 +3363,13 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
         """Guarda las URL sin firmar de los assets soportados, como JSON."""
         assets = item.get('assets', {})
         compacto = {}
-        for clave in ALIAS_ASSETS:
+        for clave in CLAVES_BANDAS:
             href = _resolver_asset(assets, clave, self._familia)
             if href:
                 # Se descarta la firma SAS: caduca en ~1 h y no sirve de nada
                 # en una capa que el usuario revisará mañana.
-                tabla = ALIAS_LS if self._familia == 'ls' else ALIAS_ASSETS
-                compacto[tabla[clave][0]] = href.split('?')[0]
+                nombres = alias_banda(clave, self._familia)
+                compacto[nombres[0]] = href.split('?')[0]
         return json.dumps(compacto, separators=(',', ':'))
 
     # ------------------------------------------------------ geometría del AOI
@@ -3658,7 +3661,7 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
         if clave in self._escala_reportada:
             return
         self._escala_reportada.add(clave)
-        etiqueta = SUFIJO_BANDA.get(banda, banda)
+        etiqueta = sufijo_banda(banda, self._familia)
         if aviso:
             feedback.pushWarning(
                 f"[!] {etiqueta}: el ítem no declara raster:bands; se usa "

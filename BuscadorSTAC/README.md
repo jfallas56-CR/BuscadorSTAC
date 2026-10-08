@@ -1,6 +1,6 @@
 # Buscador STAC: Sentinel, Landsat y Esri Wayback
 
-![version](https://img.shields.io/badge/version-1.0.5-blue)
+![version](https://img.shields.io/badge/version-1.1.0-blue)
 ![QGIS](https://img.shields.io/badge/QGIS-%E2%89%A5%203.28-green)
 ![licencia](https://img.shields.io/badge/licencia-GPL%20v2%2B-orange)
 
@@ -48,6 +48,38 @@ ordena la revisión.
   escena.
 - Ocho composiciones RGB (color natural, infrarrojo color, agricultura,
   vegetación sana, análisis de vegetación, SWIR urbano, geología, borde rojo).
+
+### Las bandas no se llaman igual en los dos sensores
+
+Los dos catálogos se piden con las mismas claves comunes del STAC, pero esas
+claves apuntan a bandas distintas, con resoluciones distintas, y en Landsat
+incluso con numeración distinta según el satélite:
+
+| Clave | Sentinel-2 | Landsat 8-9 | Landsat 4/5/7 |
+|---|---|---|---|
+| azul | B02, 10 m | B2, 30 m | B1, 30 m |
+| verde | B03, 10 m | B3, 30 m | B2, 30 m |
+| rojo | B04, 10 m | B4, 30 m | B3, 30 m |
+| NIR | B08, 10 m | B5, 30 m | B4, 30 m |
+| NIR estrecho | B8A, 20 m | B5, 30 m | B4, 30 m |
+| SWIR 1 | B11, 20 m | B6, 30 m | B5, 30 m |
+| SWIR 2 | B12, 20 m | B7, 30 m | B7, 30 m |
+| visual (TCI), borde rojo 1–3 | sí | — | — |
+
+Por eso las etiquetas del diálogo nombran **los dos sensores** —`rojo — S2 B04
+10 m · Landsat red 30 m`— y las composiciones se nombran por banda común
+(`Infrarrojo color — NIR/rojo/verde`) en vez de por número: un número sería el
+de Sentinel-2 y en Landsat sería otro, además de cambiar entre L4/5/7 y L8-9.
+
+Lo mismo vale para el nombre del archivo, que es donde más duele equivocarse
+porque sobrevive a la sesión: en Sentinel-2 lleva el número (`Sent2C_…_B04.tif`)
+y en Landsat el nombre común (`Lands8_…_RED.tif`), que es el único correcto
+para toda la familia.
+
+**NIR y NIR estrecho son la misma banda en Landsat.** En Sentinel-2 son B08
+(842 nm, 10 m) y B8A (865 nm, 20 m); Landsat tiene una sola. Marcar las dos se
+rechaza, porque antes producía dos archivos con los mismos píxeles y nombres
+que sugerían longitudes de onda distintas.
 
 **Índices y fenología**
 
@@ -456,6 +488,7 @@ Copyright © 2026 Jorge Fallas <jfallas56@gmail.com>
 
 | Versión | Fecha | Cambios |
 |---|---|---|
+| 1.1.0 | 2026-10-08 | Las etiquetas y los nombres de archivo dejan de atribuir bandas de Sentinel-2 a escenas de Landsat. Una sola tabla de bandas, con clave estable, y sufijo de archivo por sensor. |
 | 1.0.5 | 2026-10-07 | Una capa servida por la red sin área pedida se rechaza en la validación, antes de escribir nada. Corregido un aviso que perdía las comas de su propia prosa. |
 | 1.0.4 | 2026-10-07 | Nuevo «Ráster: área a exportar». Un mapa base remoto declara extensión mundial, así que exportarlo entero daba 19 km por píxel y en Earth parecía que no cargaba. Se informan los metros por píxel. |
 | 1.0.3 | 2026-10-07 | Solo documentación: se precisa la causa del cierre de 1.0.2 —la capa seleccionada en el panel de capas, no la versión— y se deja escrito que elegir un ráster lo habría cerrado igual. |

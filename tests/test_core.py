@@ -1237,3 +1237,75 @@ def test_miles_no_toca_la_prosa_que_lo_rodea():
 def test_miles_con_basura_devuelve_cadena_vacia():
     for v in (None, '', 'hola', object()):
         assert core.miles(v) == '', repr(v)
+
+
+# --------------------------------------------------------------------------
+# Tabla de bandas: la etiqueta no puede volver a mentir
+# --------------------------------------------------------------------------
+def test_la_etiqueta_nombra_los_dos_sensores():
+    """El defecto que reporto el usuario: «red (B04, 10 m)» con Landsat."""
+    assert core.etiqueta_banda('red') == (
+        'rojo — S2 B04 10 m · Landsat red 30 m')
+    assert core.etiqueta_banda('swir16') == (
+        'SWIR 1 — S2 B11 20 m · Landsat swir16 30 m')
+
+
+def test_ninguna_etiqueta_atribuye_10_o_20_m_a_landsat():
+    """Toda banda de Landsat mide 30 m; ninguna etiqueta puede decir otra."""
+    for clave in core.CLAVES_BANDAS:
+        e = core.etiqueta_banda(clave)
+        ls = e.split('·')[-1]
+        assert '10 m' not in ls and '20 m' not in ls, e
+        if 'Landsat no' not in ls:
+            assert '30 m' in ls, e
+
+
+def test_la_etiqueta_de_landsat_nombra_el_asset_real():
+    """«nir» pide el asset «nir08» en Landsat, y la etiqueta lo dice."""
+    assert 'Landsat nir08' in core.etiqueta_banda('nir')
+    assert 'Landsat qa_pixel' in core.etiqueta_banda('scl')
+
+
+def test_el_sufijo_de_archivo_depende_del_sensor():
+    """Un rojo de Landsat NO puede salir como «_B04.tif»."""
+    assert core.sufijo_banda('red', 's2') == 'B04'
+    assert core.sufijo_banda('red', 'ls') == 'RED'
+    assert core.sufijo_banda('nir', 's2') == 'B08'
+    assert core.sufijo_banda('nir', 'ls') == 'NIR08'
+    assert core.sufijo_banda('scl', 'ls') == 'QA'
+
+
+def test_ningun_sufijo_de_landsat_parece_un_numero_de_sentinel():
+    """Ni «B04» ni «B8A» sobre datos Landsat: afirmarian otro sensor."""
+    import re as _re
+    for clave in core.CLAVES_BANDAS:
+        s = core.sufijo_banda(clave, 'ls')
+        assert not _re.match(r'^B\d', s), (clave, s)
+
+
+def test_detecta_las_bandas_que_son_la_misma_en_landsat():
+    """nir y nir08 son el unico NIR de Landsat: escribirlas dos veces no."""
+    dup = core.bandas_duplicadas(['nir', 'nir08', 'red'], 'ls')
+    assert dup == [('nir08', ['nir', 'nir08'])], dup
+    # En Sentinel-2 son bandas distintas de verdad.
+    assert core.bandas_duplicadas(['nir', 'nir08', 'red'], 's2') == []
+
+
+def test_las_claves_son_estables_y_no_son_la_etiqueta():
+    """La causa de fondo: clave y etiqueta tienen que poder divergir."""
+    for clave in core.CLAVES_BANDAS:
+        assert ' ' not in clave and '(' not in clave, clave
+        assert core.etiqueta_banda(clave) != clave
+
+
+def test_landsat_no_tiene_borde_rojo_ni_tci():
+    assert set(core.SIN_EQUIVALENTE_LS) == {
+        'visual', 'rededge1', 'rededge2', 'rededge3'}
+    for clave in core.SIN_EQUIVALENTE_LS:
+        assert core.alias_banda(clave, 'ls') == []
+        assert 'Landsat no' in core.etiqueta_banda(clave)
+
+
+def test_hay_una_etiqueta_por_clave_y_sin_repetir():
+    assert len(core.ETIQUETAS_BANDAS) == len(core.CLAVES_BANDAS)
+    assert len(set(core.ETIQUETAS_BANDAS)) == len(core.ETIQUETAS_BANDAS)

@@ -25,7 +25,7 @@ cambió ni una línea de ellos.
 
 Autor    : Jorge Fallas (jfallas56@gmail.com)
 Licencia : GPL v2 o posterior
-Versión  : 1.0.5
+Versión  : 1.1.0
 """
 
 import datetime
@@ -1167,3 +1167,122 @@ def miles(valor, decimales=0):
     # final el marcador al espacio fino: hacerlo en otro orden se pisa.
     return (texto.replace(',', '\x00').replace('.', ',')
                  .replace('\x00', ESPACIO_FINO))
+
+
+# ==========================================================================
+# Bandas: una sola tabla, con clave estable
+# ==========================================================================
+# Antes habia cuatro diccionarios --ALIAS_ASSETS, ALIAS_LS, CLAVES_BANDAS y
+# SUFIJO_BANDA-- y los cuatro estaban indexados POR LA ETIQUETA QUE VE EL
+# USUARIO. Eso tenia dos consecuencias, y la segunda es seria:
+#
+#   1. La etiqueta no se podia corregir sin romper las busquedas, asi que
+#      decia «red (B04, 10 m)» tambien con Landsat, donde el rojo es B4 (B3
+#      en TM y ETM+) y mide 30 m.
+#   2. SUFIJO_BANDA convertia esa misma etiqueta en el NOMBRE DEL ARCHIVO.
+#      Un rojo de Landsat salia como «..._B04.tif», afirmando un numero de
+#      banda de Sentinel-2 sobre datos que no lo son. Y como «nir» y
+#      «nir08» apuntan los dos al unico infrarrojo cercano de Landsat,
+#      marcar ambos escribia «_B08.tif» y «_B8A.tif» CON LOS MISMOS
+#      PIXELES, como si fueran dos bandas distintas.
+#
+# Aqui la clave es interna y estable, y lo que cambia por sensor --alias
+# del asset, numero de banda, resolucion y sufijo de archivo-- vive junto.
+#
+# El numero de banda de Landsat NO se pone en la etiqueta a proposito: la
+# coleccion landsat-c2-l2 cubre de L4 a L9, y la numeracion cambia dentro
+# de esa familia (en TM y ETM+ el rojo es B3; en OLI es B4). Lo unico
+# cierto para todas es el nombre comun del STAC y los 30 m, asi que es eso
+# lo que se dice.
+
+# clave -> (etiqueta corta, alias S2, banda S2, res S2, alias LS, res LS)
+_BANDAS = (
+    ('visual',   'visual (RGB 8 bits)',
+     ['visual', 'TCI', 'tci', 'visual-10m'], 'TCI', 10,  [],          None),
+    ('blue',     'azul',
+     ['blue', 'B02'],      'B02', 10,  ['blue'],     30),
+    ('green',    'verde',
+     ['green', 'B03'],     'B03', 10,  ['green'],    30),
+    ('red',      'rojo',
+     ['red', 'B04'],       'B04', 10,  ['red'],      30),
+    ('rededge1', 'borde rojo 1',
+     ['rededge1', 'B05'],  'B05', 20,  [],           None),
+    ('rededge2', 'borde rojo 2',
+     ['rededge2', 'B06'],  'B06', 20,  [],           None),
+    ('rededge3', 'borde rojo 3',
+     ['rededge3', 'B07'],  'B07', 20,  [],           None),
+    ('nir',      'NIR',
+     ['nir', 'B08'],       'B08', 10,  ['nir08'],    30),
+    ('nir08',    'NIR estrecho',
+     ['nir08', 'B8A'],     'B8A', 20,  ['nir08'],    30),
+    ('swir16',   'SWIR 1',
+     ['swir16', 'B11'],    'B11', 20,  ['swir16'],   30),
+    ('swir22',   'SWIR 2',
+     ['swir22', 'B12'],    'B12', 20,  ['swir22'],   30),
+    ('scl',      'm\u00e1scara de clases',
+     ['scl', 'SCL'],       'SCL', 20,  ['qa_pixel'], 30),
+)
+
+CLAVES_BANDAS = tuple(b[0] for b in _BANDAS)
+ALIAS_S2 = {b[0]: list(b[2]) for b in _BANDAS}
+ALIAS_LS = {b[0]: list(b[5]) for b in _BANDAS}
+SIN_EQUIVALENTE_LS = tuple(k for k in CLAVES_BANDAS if not ALIAS_LS[k])
+
+
+def etiqueta_banda(clave):
+    """Texto del desplegable: dice lo que vale en CADA sensor.
+
+    «rojo — S2 B04 10 m · Landsat red 30 m». Sin numero de banda para
+    Landsat: cambia entre TM/ETM+ y OLI (ver el comentario de _BANDAS).
+    """
+    for k, nombre, _a2, b2, r2, als, rls in _BANDAS:
+        if k != clave:
+            continue
+        s2 = 'S2 {} {} m'.format(b2, r2) if b2 else 'S2 no'
+        ls = ('Landsat {} {} m'.format(als[0], rls) if als
+              else 'Landsat no')
+        return '{} — {} · {}'.format(nombre, s2, ls)
+    return str(clave)
+
+
+ETIQUETAS_BANDAS = tuple(etiqueta_banda(k) for k in CLAVES_BANDAS)
+
+
+def alias_banda(clave, familia='s2'):
+    """Nombres de asset a probar para esta banda en este sensor."""
+    tabla = ALIAS_LS if familia == 'ls' else ALIAS_S2
+    return list(tabla.get(clave, [] if familia == 'ls' else [clave]))
+
+
+def sufijo_banda(clave, familia='s2'):
+    """Sufijo del nombre de archivo, con el numero REAL del sensor.
+
+    Sentinel-2 conserva su numero («B04»), que es estable en toda la
+    familia. Landsat usa el nombre comun en mayusculas («RED», «NIR08»),
+    porque su numeracion cambia entre TM/ETM+ y OLI y poner «B04» sobre
+    una escena de Landsat seria afirmar algo falso.
+    """
+    for k, _n, _a2, b2, _r2, als, _rls in _BANDAS:
+        if k != clave:
+            continue
+        if familia == 'ls':
+            return als[0].upper().replace('QA_PIXEL', 'QA') if als else 'X'
+        return b2 or 'X'
+    return 'X'
+
+
+def bandas_duplicadas(claves, familia='s2'):
+    """Claves distintas que en ESTE sensor resuelven al mismo asset.
+
+    Devuelve [(asset, [claves...]), ...] solo para los que colisionan.
+    En Landsat «nir» y «nir08» son los dos la unica banda de infrarrojo
+    cercano, asi que pedir las dos escribiria el mismo raster dos veces
+    con nombres que sugieren longitudes de onda distintas.
+    """
+    porasset = {}
+    for c in claves:
+        alias = alias_banda(c, familia)
+        if not alias:
+            continue
+        porasset.setdefault(alias[0], []).append(c)
+    return [(a, cs) for a, cs in sorted(porasset.items()) if len(cs) > 1]
