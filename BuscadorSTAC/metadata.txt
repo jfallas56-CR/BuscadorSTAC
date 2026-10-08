@@ -11,7 +11,7 @@ about=Cuatro algoritmos de Processing. El primero consulta catalogos STAC public
     El tercero trabaja Sentinel-1 RTC a traves de ASF HyP3, en tres modos: inventario por traza sin consumir creditos, pedido de trabajos RTC con confirmacion explicita de gasto, y colecta de datos con amplitud estacional de retrodispersion. La colecta escribe la amplitud, las DOS medianas por estacion --sin ellas no se sabe sobre que nivel se mide la diferencia--, el recuento de observaciones por pixel y un informe HTML de auditoria autocontenido, y puede reproyectar los productos finales al SRC que se indique, por ejemplo CRTM05. El radar no pierde datos por nube, que es justo la debilidad de la mediana de estacion lluviosa en el camino optico; en cambio responde a la humedad del suelo, asi que es un indicador confundido de otra manera y vale como contraste, no como sustituto. No se mezclan trazas: cada orbita relativa observa con otro angulo de incidencia, de modo que la traza va en el nombre del archivo.
     El cuarto exporta la capa elegida a KMZ y la abre en Google Earth. Un raster se RENDERIZA antes con la simbologia que se ve en QGIS, porque KML no guarda valores sino imagenes pegadas al terreno: volcar un GeoTIFF de NDVI sin renderizar daria una imagen gris ilegible. Lo vectorial va por LIBKML y conserva los atributos; indicando un campo de fecha, cada entidad sale con su TimeStamp y Google Earth muestra el control deslizante de tiempo, util para recorrer una serie de huellas en vez de verlas encimadas. El KMZ lo leen todas las versiones de Google Earth, pero abrirlo solo se puede automatizar en la de escritorio: Earth Web y las apps moviles no permiten que otra aplicacion les entregue un archivo, de modo que para esas el algoritmo deja el archivo y dice como importarlo.
     Datos: Copernicus Sentinel-1 y Sentinel-2 (ESA) y Landsat Collection 2 (USGS/NASA), de acceso abierto; productos RTC generados por ASF DAAC HyP3 con software GAMMA, que requiere una cuenta gratuita de Earthdata Login. Las imagenes de Esri NO son dato abierto: se rigen por el Esri Master License Agreement.
-version=1.1.1
+version=1.1.2
 author=Jorge Fallas
 email=jfallas56@gmail.com
 tracker=https://github.com/jfallas56-CR/BuscadorSTAC/issues
@@ -24,7 +24,25 @@ hasProcessingProvider=yes
 experimental=False
 deprecated=False
 server=False
-changelog=1.1.1 (2026-10-08) Completa la migracion de 1.1.0.
+changelog=1.1.2 (2026-10-08) Dos textos que no decian la verdad.
+    El mensaje que rechaza composiciones en Landsat nombraba SEIS «que
+    si tienen equivalente» cuando las ocho funcionan: la lista estaba
+    escrita a mano y se quedo atras. Ademas la rama no se alcanzaba
+    nunca, porque ninguna composicion usa borde rojo ni TCI. Ahora la
+    decision y la lista se calculan desde los datos
+    (core.composiciones_vetadas), de modo que el texto no puede
+    envejecer, y la guarda se conserva por si alguna vez se anade una
+    composicion de borde rojo.
+    El README del paquete anunciaba una composicion «borde rojo» que no
+    existe, en lugar de «penetracion atmosferica», y presentaba los diez
+    indices como si los diez sirvieran en los dos sensores. NDRE y CIre
+    necesitan borde rojo y solo existen en Sentinel-2. Se documenta
+    tambien que son indices espectrales y no variables biofisicas, y que
+    de los cuatro conjuntos de coeficientes de Tasseled Cap solo los de
+    TM y OLI se derivaron sobre reflectancia de superficie; los de ETM+ y
+    MSI sobre TOA, cosa que el registro ya advertia pero el README no.
+    
+    1.1.1 (2026-10-08) Completa la migracion de 1.1.0.
     1.1.0 paso las tablas de bandas a clave estable, pero dejo atras
     tres: los indices espectrales, TC_ORDEN_BANDAS y RES_NATIVA, mas una
     llamada de la miniatura. Seguian usando la etiqueta antigua, de modo

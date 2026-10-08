@@ -1343,3 +1343,54 @@ def test_res_nativa_no_puede_desviarse_de_la_tabla_de_bandas():
 def test_en_landsat_toda_banda_mide_30_m():
     for clave in core.CLAVES_BANDAS:
         assert core._res_nativa(clave, 'ls') == 30.0, clave
+
+
+# --------------------------------------------------------------------------
+# Veto de composiciones en Landsat
+# --------------------------------------------------------------------------
+_COMPOS_FALSAS = [
+    ('Color natural', 'NAT', ('red', 'green', 'blue')),
+    ('Borde rojo', 'BRJ', ('rededge3', 'rededge1', 'green')),
+    ('Vista rapida', 'TCI', ('visual',)),
+]
+
+
+def test_veta_solo_las_composiciones_que_usan_bandas_ausentes():
+    vetadas, disponibles = core.composiciones_vetadas(_COMPOS_FALSAS)
+    assert disponibles == ['Color natural']
+    assert [v[0] for v in vetadas] == ['Borde rojo', 'Vista rapida']
+    assert vetadas[0][1] == ['rededge3', 'rededge1']
+    assert vetadas[1][1] == ['visual']
+
+
+def test_hoy_ninguna_composicion_real_queda_vetada():
+    """Las ocho funcionan en Landsat; el mensaje debe poder decirlo."""
+    import os
+    ruta = os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), 'BuscadorSTAC',
+        'buscar_sentinel2_algoritmo.py')
+    fuente = open(ruta, encoding='utf-8').read()
+    import ast
+    comps = None
+    for nodo in ast.walk(ast.parse(fuente)):
+        if (isinstance(nodo, ast.Assign)
+                and any(isinstance(d, ast.Name) and d.id == 'COMPOSICIONES'
+                        for d in nodo.targets)):
+            comps = [(f.elts[0].value, f.elts[1].value,
+                      tuple(b.value for b in f.elts[2].elts))
+                     for f in nodo.value.elts]
+    assert comps and len(comps) == 8, comps
+    vetadas, disponibles = core.composiciones_vetadas(comps)
+    assert vetadas == [], vetadas
+    assert len(disponibles) == 8
+
+
+def test_la_lista_de_disponibles_no_se_escribe_a_mano():
+    """El defecto: el mensaje nombraba seis de ocho, a mano."""
+    _v, disponibles = core.composiciones_vetadas(_COMPOS_FALSAS, set())
+    assert len(disponibles) == len(_COMPOS_FALSAS)
+
+
+def test_composiciones_vacias_no_estallan():
+    assert core.composiciones_vetadas(None) == ([], [])
+    assert core.composiciones_vetadas([]) == ([], [])

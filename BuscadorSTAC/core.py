@@ -25,7 +25,7 @@ cambió ni una línea de ellos.
 
 Autor    : Jorge Fallas (jfallas56@gmail.com)
 Licencia : GPL v2 o posterior
-Versión  : 1.1.1
+Versión  : 1.1.2
 """
 
 import datetime
@@ -1286,3 +1286,36 @@ def bandas_duplicadas(claves, familia='s2'):
             continue
         porasset.setdefault(alias[0], []).append(c)
     return [(a, cs) for a, cs in sorted(porasset.items()) if len(cs) > 1]
+
+
+def composiciones_vetadas(composiciones, sin_equivalente=None):
+    """(vetadas, disponibles) de una lista de composiciones, para Landsat.
+
+    `composiciones` son tuplas (etiqueta, sufijo, bandas). Devuelve las que
+    citan alguna banda que Landsat no tiene, con las bandas que les
+    faltan, y las etiquetas de las que si se pueden usar.
+
+    Existe porque el mensaje de rechazo nombraba SEIS composiciones «que
+    si tienen equivalente» cuando las ocho funcionan: la lista estaba
+    escrita a mano y se quedo atras. Un mensaje de error que miente es
+    peor que no tenerlo, porque manda al usuario a buscar un problema que
+    no existe. Calculado desde los datos no puede envejecer.
+
+    Hoy ninguna composicion cita borde rojo ni TCI, asi que `vetadas`
+    sale vacia siempre. Se conserva como guarda: si alguna vez se anade
+    una de borde rojo --el README llego a anunciar una-- el rechazo sale
+    solo, y con el texto correcto.
+    """
+    if sin_equivalente is None:
+        sin_equivalente = SIN_EQUIVALENTE_LS
+    faltantes = set(sin_equivalente)
+    vetadas, disponibles = [], []
+    for fila in composiciones or ():
+        etiqueta = fila[0]
+        bandas = fila[2] if len(fila) > 2 else ()
+        faltan = [b for b in (bandas or ()) if b in faltantes]
+        if faltan:
+            vetadas.append((etiqueta, faltan))
+        else:
+            disponibles.append(etiqueta)
+    return vetadas, disponibles

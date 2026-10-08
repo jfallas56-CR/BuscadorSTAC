@@ -41,7 +41,7 @@ LO QUE NO HACE
 
 Autor    : Jorge Fallas (jfallas56@gmail.com)
 Licencia : GPL v2 o posterior
-Versión  : 1.1.1
+Versión  : 1.1.2
 
 Historial:
     1.0.5 (2026-10-07): Un mapa base remoto sin «área a exportar» se
@@ -123,7 +123,7 @@ FORMATOS_IMAGEN = ['PNG (conserva transparencia)', 'JPEG (menos peso)']
 class ExportarGoogleEarthAlgorithm(QgsProcessingAlgorithm):
     """Capa ráster o vectorial a KMZ, y abrirlo en Google Earth."""
 
-    VERSION = 'v1.1.1'
+    VERSION = 'v1.1.2'
 
     CAPA = 'CAPA'
     CAMPO_FECHA = 'CAMPO_FECHA'

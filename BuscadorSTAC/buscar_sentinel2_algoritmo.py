@@ -27,7 +27,7 @@ No requiere credenciales para Earth Search. Planetary Computer usa un
 token SAS anónimo gratuito que el algoritmo solicita automáticamente.
 
 Autor  : Jorge Fallas (jfallas56@gmail.com)
-Versión: 1.1.1
+Versión: 1.1.2
 
 Historial:
     1.0.0 (2026-10-02): Primera versión pública.
@@ -102,7 +102,8 @@ from .core import (
     _periodos_sin_datos, _procedencia_huellas, _reducir_por_periodo,
     _res_nativa, _salida_volatil, _tamano_salida, _validar_ortonormalidad,
     CLAVES_BANDAS, ETIQUETAS_BANDAS, SIN_EQUIVALENTE_LS,
-    alias_banda, bandas_duplicadas, etiqueta_banda, sufijo_banda)
+    alias_banda, bandas_duplicadas, composiciones_vetadas,
+    etiqueta_banda, sufijo_banda)
 
 from osgeo import gdal
 
@@ -984,7 +985,7 @@ def _geom_desde_geojson(gj):
 # --------------------------------------------------------------------------
 class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
 
-    VERSION = 'v1.1.1'
+    VERSION = 'v1.1.2'
 
     # Lógica pura, definida en core.py y reenganchada aquí como
     # staticmethod. Así cada sitio de llamada sigue siendo
@@ -1918,21 +1919,20 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             )
 
         if familia == 'ls':
-            vetadas = []
-            for idx in comps:
-                etiqueta, _, bandas_comp = COMPOSICIONES[idx]
-                faltan = [etiqueta_banda(b) for b in (bandas_comp or ())
-                          if b in SIN_EQUIVALENTE_LS]
-                if faltan:
-                    vetadas.append(f"«{etiqueta}» (necesita {', '.join(faltan)})")
+            # La lista de «las que sí sirven» se calcula, no se escribe:
+            # estaba a mano, nombraba seis de ocho, y las ocho funcionan.
+            vetadas, disponibles = composiciones_vetadas(
+                [COMPOSICIONES[i] for i in comps])
             if vetadas:
+                detalle = '; '.join(
+                    '«{}» (necesita {})'.format(
+                        et, ', '.join(etiqueta_banda(b) for b in faltan))
+                    for et, faltan in vetadas)
+                _, todas = composiciones_vetadas(COMPOSICIONES)
                 return False, (
-                    f"[!] Estas composiciones usan bandas que Landsat no "
-                    f"tiene: {'; '.join(vetadas)}. Landsat carece de bandas "
-                    f"red edge. Desmárquelas y use Color natural, Infrarrojo "
-                    f"color, Agricultura, Análisis de vegetación, SWIR urbano "
-                    f"o Geología, que sí tienen equivalente."
-                )
+                    "[!] Estas composiciones usan bandas que Landsat no "
+                    "tiene: {d}. Desmárquelas. Sí funcionan en Landsat: {ok}."
+                ).format(d=detalle, ok=', '.join(todas))
             # Las bandas sueltas solo se usan cuando NO hay composiciones
             # marcadas; validarlas siempre rechazaba ejecuciones válidas por
             # culpa del valor por defecto del parámetro.
