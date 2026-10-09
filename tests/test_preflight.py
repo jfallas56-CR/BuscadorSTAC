@@ -666,3 +666,41 @@ def test_detecta_una_composicion_que_cita_una_banda_inexistente(copia):
         'preflight tiene que bloquear: la busqueda del asset no encontraria '
         'nada y la composicion saldria vacia sin un solo error. '
         'Bloqueantes: %r' % _bloqueantes(datos))
+
+
+def test_detecta_una_palabra_inglesa_en_la_interfaz(copia):
+    """La interfaz es en espanol; «assets» en un rotulo tiene que bloquear."""
+    ruta = os.path.join(copia, PAQUETE, 'buscar_sentinel2_algoritmo.py')
+    fuente = open(ruta, encoding='utf-8').read()
+    ancla = "self.tr('Bandas / recursos espectrales')"
+    assert ancla in fuente, 'cambio el parametro de referencia de la prueba'
+    roto = fuente.replace(ancla, "self.tr('Bandas / assets individuales')", 1)
+    open(ruta, 'w', encoding='utf-8').write(roto)
+
+    _, datos = _correr(copia)
+    assert _dice(datos, 'palabras inglesas sueltas'), (
+        'preflight tiene que bloquear un rotulo en ingles. Bloqueantes: %r'
+        % _bloqueantes(datos))
+
+
+def test_un_identificador_entre_comillas_no_es_un_falso_positivo(copia):
+    """El campo «assets» de la capa se nombra a proposito y no debe bloquear.
+
+    Renombrarlo romperia las capas de huellas ya guardadas, asi que la
+    comprobacion tiene que distinguir «nombrar el campo» de «hablar en
+    ingles».
+    """
+    ruta = os.path.join(copia, PAQUETE, 'buscar_sentinel2_algoritmo.py')
+    fuente = open(ruta, encoding='utf-8').read()
+    ancla = "    def shortHelpString(self):\n        return self.tr(\n"
+    assert ancla in fuente
+    sano = fuente.replace(
+        ancla,
+        ancla + "            'Las URL viven en el campo «assets» de la capa.'\n",
+        1)
+    open(ruta, 'w', encoding='utf-8').write(sano)
+
+    _, datos = _correr(copia)
+    assert not _dice(datos, 'palabras inglesas sueltas'), (
+        'nombrar el campo entre comillas angulares es legitimo y no debe '
+        'bloquear. Bloqueantes: %r' % _bloqueantes(datos))

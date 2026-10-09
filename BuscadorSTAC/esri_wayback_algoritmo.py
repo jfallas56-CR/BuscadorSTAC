@@ -66,7 +66,7 @@ Para productos vectoriales derivados destinados a reporte oficial, conviene
 confirmarlo por escrito. El algoritmo muestra este aviso en cada ejecución.
 
 Autor  : Jorge Fallas (jfallas56@gmail.com)
-Versión: 1.1.2
+Versión: 1.2.0
 Licencia: GPL v2 o posterior
 """
 
@@ -279,7 +279,7 @@ def _fecha_epoch(valor):
 class EsriWaybackAlgorithm(QgsProcessingAlgorithm):
     """World Imagery actual e histórico (Wayback) recortado al AOI."""
 
-    VERSION = 'v1.1.2'
+    VERSION = 'v1.2.0'
 
     AOI = 'AOI'
     EXTENSION = 'EXTENSION'
@@ -351,7 +351,7 @@ class EsriWaybackAlgorithm(QgsProcessingAlgorithm):
             "• <code>2022-02-03</code> — toda el área muestreada tiene la "
             "misma imagen de origen.<br>"
             "• <code>2022-02-03…2023-07-01 (2)</code> — <b>su lote abarca más "
-            "de un footprint de origen</b> y hay dos fechas distintas dentro "
+            "de una huella de origen</b> y hay dos fechas distintas dentro "
             "de él. Importa: al fotointerpretar, una parte de la imagen puede "
             "ser un año más vieja que el resto, y la costura no se ve.<br>"
             "• <code>?</code> — el servicio de metadatos de Esri no respondió. "
@@ -526,7 +526,7 @@ class EsriWaybackAlgorithm(QgsProcessingAlgorithm):
             'las actualizaciones que solo tocan un borde.<br>'
             'Estos mismos puntos se usan para pedir la fecha de captura (los '
             'tres más cercanos al centro), que es lo que permite detectar que '
-            'un lote abarca varios footprints de origen. Con rejilla 1 esa '
+            'un lote abarca varios huellas de origen. Con rejilla 1 esa '
             'comprobación no es posible y la fecha sale siempre como un valor '
             'único, aunque el lote no sea homogéneo.'))
         self.addParameter(p)
@@ -1233,7 +1233,7 @@ class EsriWaybackAlgorithm(QgsProcessingAlgorithm):
         el centro, y entonces la fecha del centro no describe lo que cambio.
 
         Se consultan varios puntos y se agregan los resultados distintos. Si
-        el lote abarca dos footprints de origen, eso se ve.
+        el lote abarca dos huellas de origen, eso se ve.
 
         Devuelve un dict: fechas (lista), resumen (texto para la tabla),
         fuentes (lista «Proveedor (SENSOR)»), res, exactitud, fallos, y

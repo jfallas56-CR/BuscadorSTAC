@@ -20,14 +20,14 @@ Buscador y descargador de escenas Sentinel-2 L2A (STAC + COG)
 
 Algoritmo Processing para QGIS. Consulta catálogos STAC públicos
 (Element84 Earth Search / Microsoft Planetary Computer), genera una capa
-vectorial de huellas con metadatos, y opcionalmente carga los assets como
+vectorial de huellas con metadatos, y opcionalmente carga los recursos como
 capas remotas (/vsicurl/) o descarga recortes locales del AOI.
 
 No requiere credenciales para Earth Search. Planetary Computer usa un
 token SAS anónimo gratuito que el algoritmo solicita automáticamente.
 
 Autor  : Jorge Fallas (jfallas56@gmail.com)
-Versión: 1.1.2
+Versión: 1.2.0
 
 Historial:
     1.0.0 (2026-10-02): Primera versión pública.
@@ -172,7 +172,7 @@ CATALOGOS = [
 ]
 
 # Landsat solo se ofrece vía Planetary Computer a propósito: en Earth Search
-# los assets de landsat-c2-l2 son s3:// en un bucket «requester pays», que
+# los recursos de landsat-c2-l2 son s3:// en un bucket «requester pays», que
 # exige petición firmada con credenciales AWS de pago. AWS_NO_SIGN_REQUEST no
 # sirve ahí, así que esa ruta fallaría de forma poco evidente.
 
@@ -213,7 +213,8 @@ QA_RELLENO = 1
 
 # Composiciones RGB. Cada entrada: (etiqueta, sufijo, (banda_R, banda_G, banda_B))
 # Se pueden seleccionar varias a la vez; no seleccionar ninguna equivale a
-# trabajar con las bandas sueltas del parámetro «Bandas / assets individuales».
+# trabajar con las bandas sueltas del parámetro «Bandas / recursos
+# espectrales».
 COMPOSICIONES = [
     # La etiqueta NO lleva numeros de banda: serian los de Sentinel-2 y
     # enganarian con Landsat, donde ademas la numeracion cambia entre
@@ -322,7 +323,7 @@ S2_BASELINE_CON_OFFSET = '04.00'
 
 MODOS = [
     "Solo catálogo (huellas + metadatos)",
-    "Catálogo + cargar assets remotos (/vsicurl/, sin descarga)",
+    "Catálogo + cargar recursos remotos (/vsicurl/, sin descarga)",
     "Catálogo + descargar recorte del AOI a disco",
 ]
 
@@ -985,7 +986,7 @@ def _geom_desde_geojson(gj):
 # --------------------------------------------------------------------------
 class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
 
-    VERSION = 'v1.1.2'
+    VERSION = 'v1.2.0'
 
     # Lógica pura, definida en core.py y reenganchada aquí como
     # staticmethod. Así cada sitio de llamada sigue siendo
@@ -1115,12 +1116,12 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             "<b>Modos:</b><br>"
             "• <i>Solo catálogo</i>: únicamente la capa de huellas. Útil para "
             "explorar disponibilidad antes de transferir datos.<br>"
-            "• <i>Cargar assets remotos</i>: añade las bandas como capas "
+            "• <i>Cargar recursos remotos</i>: añade las bandas como capas "
             "ráster leídas por HTTP mediante /vsicurl/. No ocupa disco; QGIS "
             "solo descarga los bloques visibles.<br>"
             "• <i>Descargar recorte</i>: escribe un GeoTIFF comprimido por banda "
             "y escena, recortado al AOI.<br><br>"
-            "<b>Sensores:</b> Sentinel-2 L2A (10-20 m, desde 2017) y Landsat Collection 2 Nivel 2 (30 m, desde 1982). Las claves de banda son comunes a ambos, de modo que las composiciones RGB funcionan igual; Landsat no tiene red edge ni asset TCI, así que la vista previa se compone desde R/G/B y esas composiciones quedan vetadas. La nubosidad dentro del AOI se mide con SCL en Sentinel-2 y con los bits de QA_PIXEL en Landsat. Los recortes se nombran con el número real del sensor: «_B04» en Sentinel-2 y «_RED» en Landsat, donde el número cambia entre L4/5/7 y L8-9 y poner uno solo sería falso.<br><br>"  # noqa: E501
+            "<b>Sensores:</b> Sentinel-2 L2A (10-20 m, desde 2017) y Landsat Collection 2 Nivel 2 (30 m, desde 1982). Las claves de banda son comunes a ambos, pero no apuntan a la misma banda ni a la misma resolución: cada rótulo lo dice. Las ocho composiciones RGB funcionan en los dos sensores; Landsat no tiene borde rojo ni recurso TCI, así que la vista previa se compone desde R/G/B y los índices NDRE y CIre quedan vetados. La nubosidad dentro del AOI se mide con SCL en Sentinel-2 y con los bits de QA_PIXEL en Landsat. Los recortes se nombran con el número real del sensor: «_B04» en Sentinel-2 y «_RED» en Landsat, donde el número cambia entre L4/5/7 y L8-9 y poner uno solo sería falso.<br><br>"  # noqa: E501
             "<b>Flujo recomendado en Costa Rica (nubosidad alta):</b><br>"
             "1. Ejecute en modo <i>Solo catálogo</i> con miniaturas activadas "
             "y nubosidad de escena permisiva (50-70 %). Marque «Capa de "
@@ -1156,7 +1157,7 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             "• La extensión se reproyecta a EPSG:4326 para la consulta STAC; "
             "los recortes conservan el SRC nativo de la escena (UTM 16N/17N en "
             "Costa Rica).<br>"
-            "• La capa de AOI (opcional) se usa como <i>cutline</i> y tiene "
+            "• La capa de AOI (opcional) se usa como <i>línea de corte</i> y tiene "
             "prioridad sobre la extensión.<br>"
             "• Earth Search no requiere credenciales. Planetary Computer solicita "
             "un token SAS anónimo que caduca a los ~45 minutos; el algoritmo lo "
@@ -1214,7 +1215,7 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             optional=True
         )
         p.setHelp(self.tr(
-            'Se usa siempre como <i>cutline</i> del recorte. Además, si «Área '
+            'Se usa siempre como <i>línea de corte</i> del recorte. Además, si «Área '
             'de búsqueda» está en «Capa de AOI», su envolvente define el bbox '
             'de la consulta STAC, las estadísticas de nube y las miniaturas — '
             'no solo el corte final. Es la forma recomendada de acotar el '
@@ -1322,7 +1323,7 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             self.tr('Generar miniaturas PNG para revisión visual'),
             defaultValue=True)
         p.setHelp(self.tr(
-            'Recorta el asset TCI al AOI y escribe un PNG por escena en '
+            'Recorta el recurso TCI al AOI y escribe un PNG por escena en '
             '<carpeta>/miniaturas. La capa de huellas resultante muestra la '
             'imagen en el consejo emergente y en el formulario de atributos. '
             'Requiere carpeta de salida.'))
@@ -1364,9 +1365,9 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
         p.setHelp(self.tr(
             'Directorio permanente donde se escriben las miniaturas, la hoja '
             'de contactos y los recortes descargados. El botón «…» abre un '
-            'selector de carpetas: si le ofrece «Browse for Layer…» está '
-            'pulsando otro parámetro, no éste. Obligatorio si activa las '
-            'miniaturas o el modo de descarga.'))
+            'selector de CARPETAS: si lo que se abre pide elegir una capa, '
+            'está pulsando el botón de otro parámetro, no el de éste. '
+            'Obligatorio si activa las miniaturas o el modo de descarga.'))
         self.addParameter(p)
 
         p = QgsProcessingParameterFeatureSource(
@@ -1446,7 +1447,7 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             'devuelve las huellas y la hoja de contactos. No transfiere '
             'píxeles, así que es el modo para explorar disponibilidad y el '
             'primer paso del flujo de dos pasos.<br>'
-            '<b>Cargar assets remotos</b>: añade las bandas como capas '
+            '<b>Cargar recursos remotos</b>: añade las bandas como capas '
             'leídas por HTTP con /vsicurl/. No ocupa disco y QGIS descarga '
             'solo los bloques que mira. Con Planetary Computer, la URL '
             'firmada caduca en unos 45 minutos y las capas dejan de cargar '
@@ -1474,8 +1475,8 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             'Las composiciones se nombran por banda común y no por número, '
             'porque los números serían los de Sentinel-2 y en Landsat son '
             'otros —y cambian entre L4/5/7 y L8-9—. La tabla de '
-            'equivalencias está en la ayuda de «Bandas / assets '
-            'individuales».<br>'
+            'equivalencias está en la ayuda de «Bandas / recursos '
+            'espectrales».<br>'
             'Sin ninguna marcada se usan las bandas sueltas del parámetro '
             'siguiente.<br>'
             'Esto son capas RGB para interpretación visual. Los valores '
@@ -1484,7 +1485,7 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
         self.addParameter(p)
 
         p = QgsProcessingParameterEnum(
-            self.BANDAS, self.tr('Bandas / assets individuales'),
+            self.BANDAS, self.tr('Bandas / recursos espectrales'),
             options=list(ETIQUETAS_BANDAS), allowMultiple=True,
             defaultValue=[],
             optional=True)
@@ -1768,7 +1769,7 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             'AOI pequeño solo estorban, y la información útil ya está en la '
             'hoja de contactos y en el registro.<br>'
             'Actívela únicamente si va a usar el flujo de dos pasos: es la '
-            'capa que guarda las URL de los assets en el campo «assets», y '
+            'capa que guarda las URL de los recursos en el campo «assets», y '
             'sin ella el parámetro «Huellas ya revisadas» no tiene de dónde '
             'leer.<br><br>'
             '<b>Elija un archivo, no una capa temporal</b>, si piensa '
@@ -1874,7 +1875,7 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
                     "[!] La amplitud fenológica se calcula sobre los índices "
                     "espectrales. Marque al menos uno en el parámetro "
                     "«Índices espectrales», que está debajo de «Bandas / "
-                    "assets individuales» — no en «Composiciones RGB», que son "
+                    "recursos espectrales» — no en «Composiciones RGB», que son "
                     "capas de color y no valores calculados. Para vegetación "
                     "leñosa, NDMI es el más discriminante."
                 )
@@ -2650,7 +2651,7 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
         except Exception as e:
             feedback.pushWarning(
                 f"[_token_pc] No se pudo obtener el token SAS: {e}. "
-                f"Los assets no serán accesibles; use Earth Search.")
+                f"Los recursos no serán accesibles; use Earth Search.")
             return None
 
     def _token_vigente(self, feedback, respaldo=None):
@@ -2721,18 +2722,18 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
                 opciones.ct = QgsCoordinateTransform(
                     capa.crs(), wgs84, context.transformContext())
                 feedback.pushInfo(
-                    f"Cutline reproyectado {capa.crs().authid()} → EPSG:4326")
+                    f"Línea de corte reproyectada {capa.crs().authid()} → EPSG:4326")
 
             resultado = QgsVectorFileWriter.writeAsVectorFormatV3(
                 capa, ruta, context.transformContext(), opciones)
             if resultado and resultado[0] != QgsVectorFileWriter.NoError:
                 feedback.pushWarning(f"[_escribir_cutline] {resultado[1]}")
                 return None
-            feedback.pushInfo(f"Cutline preparado: {ruta}")
+            feedback.pushInfo(f"Línea de corte preparada: {ruta}")
             return ruta
         except Exception as e:
             feedback.pushWarning(
-                f"[_escribir_cutline] No se pudo preparar el AOI como cutline: {e}. "
+                f"[_escribir_cutline] No se pudo preparar el AOI como línea de corte: {e}. "
                 f"Se recortará por extensión rectangular.")
             return None
 
@@ -2832,7 +2833,7 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
                                        self._familia)
                 if not href:
                     feedback.pushWarning(
-                        f"[_cargar_remoto] Asset ausente '{banda}' en {item.get('id')}")
+                        f"[_cargar_remoto] Recurso ausente '{banda}' en {item.get('id')}")
                     continue
                 if firmar:
                     href = _firmar_pc(href, self._token_vigente(feedback, token))
@@ -2884,7 +2885,7 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
                                        self._familia)
                 if not href:
                     feedback.pushWarning(
-                        f"[_descargar] Asset ausente '{banda}' en {item.get('id')}")
+                        f"[_descargar] Recurso ausente '{banda}' en {item.get('id')}")
                     hecho += 1
                     continue
                 if firmar:
@@ -2958,13 +2959,13 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
                     break
             partes.append(f"{canal[i]}={resuelto or 'AUSENTE'}")
         feedback.pushInfo(
-            f"    assets: {'  '.join(partes)}  "
+            f"    recursos: {'  '.join(partes)}  "
             f"[{'Landsat' if self._familia == 'ls' else 'Sentinel-2'}, "
             f"{_res_nativa(bandas_rgb[0], self._familia):.0f} m]")
         ausentes = [p for p in partes if 'AUSENTE' in p]
         if ausentes:
             feedback.pushWarning(
-                f"[_log_mapeo_bandas] Assets no encontrados en el catálogo: "
+                f"[_log_mapeo_bandas] Recursos no encontrados en el catálogo: "
                 f"{', '.join(ausentes)}. Los nombres disponibles son: "
                 f"{', '.join(sorted(assets)[:20])}")
 
@@ -2976,7 +2977,7 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
                                    self._familia)
             if not href:
                 feedback.pushWarning(
-                    f"[_hrefs_rgb] Asset ausente '{banda}' en {item.get('id')}; "
+                    f"[_hrefs_rgb] Recurso ausente '{banda}' en {item.get('id')}; "
                     f"escena omitida para esta composición.")
                 return None
             if firmar:
@@ -3231,7 +3232,7 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
                 feedback.pushWarning(
                     "[!] No se generó ninguna miniatura. Revise las advertencias "
                     "[_miniatura] anteriores: causas habituales son ausencia del "
-                    "asset TCI en la colección elegida, o falta de permisos de "
+                    "recurso TCI en la colección elegida, o falta de permisos de "
                     "escritura en la carpeta.")
             else:
                 self._ruta_hoja = self._hoja_contactos(
@@ -3302,7 +3303,7 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
                 feedback.pushDebugInfo(f"[limpieza_scl] {e2}")
 
     def _miniatura(self, item, bbox, carpeta_min, px, token, firmar, feedback):
-        """PNG del asset TCI recortado al AOI. Devuelve la ruta o None.
+        """PNG del recurso TCI recortado al AOI. Devuelve la ruta o None.
 
         TCI ya viene en 8 bits con estiramiento aplicado por ESA, de modo que
         no hace falta calcular percentiles: es la fuente correcta para una
@@ -3360,7 +3361,7 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
     # ------------------------------------------- ida y vuelta capa <-> items
 
     def _serializar_assets(self, item):
-        """Guarda las URL sin firmar de los assets soportados, como JSON."""
+        """Guarda las URL sin firmar de los recursos soportados, como JSON."""
         assets = item.get('assets', {})
         compacto = {}
         for clave in CLAVES_BANDAS:

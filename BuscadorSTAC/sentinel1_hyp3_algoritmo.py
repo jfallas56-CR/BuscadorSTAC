@@ -51,7 +51,7 @@ El token se escribe en el parámetro correspondiente y NO se guarda en
 ninguna parte: ni en el proyecto, ni en el manifiesto, ni en el registro.
 
 Autor  : Jorge Fallas (jfallas56@gmail.com)
-Versión: 1.1.2
+Versión: 1.2.0
 Licencia: GPL v2 o posterior
 
 Historial:
@@ -665,7 +665,7 @@ class Sentinel1Hyp3Algorithm(QgsProcessingAlgorithm):
     CARPETA = 'CARPETA'
     SALIDA = 'SALIDA'
 
-    VERSION = 'v1.1.2'
+    VERSION = 'v1.2.0'
 
     def __init__(self):
         super().__init__()
@@ -810,7 +810,7 @@ mes. Un trabajo RTC cuesta 5 créditos a 30 m, 15 a 20 m y 60 a 10 m. Una
 traza de un año a 10 m ronda los 1&nbsp;500–3&nbsp;000 créditos, así que cabe
 de sobra; el inventario le da la cifra exacta antes de gastar nada.</p>
 
-<p><b>Radiometría.</b> Se pide escala <i>power</i> y no dB. La mediana es
+<p><b>Radiometría.</b> Se pide escala de potencia (<i>power</i>) y no dB. La mediana es
 invariante al cambio monótono, así que para la amplitud daría igual, pero
 cualquier cociente (RVI, VH/VV) y cualquier promedio hay que calcularlos en
 potencia: promediar decibelios da un número que no es el promedio de nada.</p>
@@ -960,13 +960,15 @@ cualquier producto derivado.</p>
         self.addParameter(p)
 
         p = QgsProcessingParameterBoolean(
-            self.FILTRO_SPECKLE, self.tr('Filtro de speckle (Enhanced Lee)'),
+            self.FILTRO_SPECKLE, self.tr('Filtro de moteado (Enhanced Lee)'),
             defaultValue=False)
         p.setHelp(self.tr(
-            'Lo aplica HyP3 en el servidor, con factor de amortiguamiento 1 y '
-            'ventana de 7x7.<br>'
+            'El moteado es el granulado propio del radar, que la '
+            'bibliografía llama <i>speckle</i>. Lo aplica HyP3 en el '
+            'servidor, con factor de amortiguamiento 1 y ventana de '
+            '7x7.<br>'
             'Desactivado por omisión a propósito: la mediana de una docena de '
-            'fechas ya promedia el speckle por sí misma, y filtrar antes '
+            'fechas ya promedia el moteado por sí misma, y filtrar antes '
             'suaviza los bordes de las copas, que es precisamente el detalle '
             'que se quiere conservar a 10 m. Actívelo si va a interpretar una '
             'fecha suelta.'))
@@ -1874,14 +1876,14 @@ cualquier producto derivado.</p>
         filtro_man = man.get('filtro_speckle')
         feedback.pushInfo(
             f"Procesado del lote: radiometría "
-            f"{man.get('radiometria', '?')} · escala "
-            f"{man.get('escala', '?')} · filtro de speckle "
+            f"{man.get('radiometria', '?')} · escala de potencia "
+            f"{man.get('escala', '?')} · filtro de moteado "
             f"{'sí' if filtro_man else 'no'}")
         pedido_ahora = self.parameterAsBool(
             parameters, self.FILTRO_SPECKLE, context)
         if filtro_man is not None and bool(pedido_ahora) != bool(filtro_man):
             feedback.pushWarning(
-                f"[!] «Filtro de speckle» está en {pedido_ahora} en el "
+                f"[!] «Filtro de moteado» está en {pedido_ahora} en el "
                 f"diálogo, pero este lote se pidió con {bool(filtro_man)} y "
                 f"eso ya está en el dato. En la colecta de datos ese "
                 f"parámetro no hace nada: para cambiarlo hay que volver a "
@@ -2625,7 +2627,7 @@ cualquier producto derivado.</p>
                 ('Espaciamiento de píxel', f"{man.get('resolucion_m', '?')} m"),
                 ('Radiometría', man.get('radiometria', '?')),
                 ('Escala', man.get('escala', '?')),
-                ('Filtro de speckle',
+                ('Filtro de moteado',
                  'sí' if man.get('filtro_speckle') else 'no'),
                 ('Polarización pedida', man.get('polarizacion', '?')),
                 ('AOI del pedido (EPSG:4326)',

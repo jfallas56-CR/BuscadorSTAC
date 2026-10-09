@@ -11,7 +11,7 @@ about=Cuatro algoritmos de Processing. El primero consulta catalogos STAC public
     El tercero trabaja Sentinel-1 RTC a traves de ASF HyP3, en tres modos: inventario por traza sin consumir creditos, pedido de trabajos RTC con confirmacion explicita de gasto, y colecta de datos con amplitud estacional de retrodispersion. La colecta escribe la amplitud, las DOS medianas por estacion --sin ellas no se sabe sobre que nivel se mide la diferencia--, el recuento de observaciones por pixel y un informe HTML de auditoria autocontenido, y puede reproyectar los productos finales al SRC que se indique, por ejemplo CRTM05. El radar no pierde datos por nube, que es justo la debilidad de la mediana de estacion lluviosa en el camino optico; en cambio responde a la humedad del suelo, asi que es un indicador confundido de otra manera y vale como contraste, no como sustituto. No se mezclan trazas: cada orbita relativa observa con otro angulo de incidencia, de modo que la traza va en el nombre del archivo.
     El cuarto exporta la capa elegida a KMZ y la abre en Google Earth. Un raster se RENDERIZA antes con la simbologia que se ve en QGIS, porque KML no guarda valores sino imagenes pegadas al terreno: volcar un GeoTIFF de NDVI sin renderizar daria una imagen gris ilegible. Lo vectorial va por LIBKML y conserva los atributos; indicando un campo de fecha, cada entidad sale con su TimeStamp y Google Earth muestra el control deslizante de tiempo, util para recorrer una serie de huellas en vez de verlas encimadas. El KMZ lo leen todas las versiones de Google Earth, pero abrirlo solo se puede automatizar en la de escritorio: Earth Web y las apps moviles no permiten que otra aplicacion les entregue un archivo, de modo que para esas el algoritmo deja el archivo y dice como importarlo.
     Datos: Copernicus Sentinel-1 y Sentinel-2 (ESA) y Landsat Collection 2 (USGS/NASA), de acceso abierto; productos RTC generados por ASF DAAC HyP3 con software GAMMA, que requiere una cuenta gratuita de Earthdata Login. Las imagenes de Esri NO son dato abierto: se rigen por el Esri Master License Agreement.
-version=1.1.2
+version=1.2.0
 author=Jorge Fallas
 email=jfallas56@gmail.com
 tracker=https://github.com/jfallas56-CR/BuscadorSTAC/issues
@@ -24,7 +24,34 @@ hasProcessingProvider=yes
 experimental=False
 deprecated=False
 server=False
-changelog=1.1.2 (2026-10-08) Dos textos que no decian la verdad.
+changelog=1.2.0 (2026-10-09) La interfaz, toda en espanol.
+    «Bandas / assets individuales» pasa a «Bandas / recursos
+    espectrales», y con el resto del barrido: «Cargar assets remotos» ->
+    «Cargar recursos remotos», «cutline» -> «linea de corte», «Filtro de
+    speckle» -> «Filtro de moteado», «footprint» -> «huella», «red edge»
+    -> «borde rojo», «escala power» -> «escala de potencia», y los
+    mensajes del registro que decian «Asset ausente» o «Cutline
+    preparado».
+    Un caso merece mencion: la ayuda de la carpeta de salida citaba el
+    rotulo «Browse for Layer...» del QGIS en INGLES. En un QGIS en
+    espanol ese texto no aparece, de modo que la instruccion mandaba a
+    buscar algo que no existe; ahora describe el boton en vez de citarlo.
+    NO se traducen los identificadores: el campo «assets» de la capa de
+    huellas conserva su nombre --renombrarlo romperia las capas ya
+    guardadas y el flujo de dos pasos--, igual que raster:bands,
+    speckle_filter o gdal.Warp. «speckle» se mantiene entre parentesis en
+    la ayuda del filtro, para quien busque bibliografia.
+    De paso, dos frases de shortHelpString que ya no eran ciertas: decia
+    que algunas composiciones RGB quedan vetadas en Landsat --las ocho
+    funcionan; lo vetado son los indices NDRE y CIre-- y que las claves
+    de banda son comunes sin anadir que no apuntan a la misma banda ni a
+    la misma resolucion.
+    preflight gana comp_interfaz_en_espanol, que revisa tr(), setHelp(),
+    pushInfo() y pushWarning() y distingue hablar en ingles de nombrar un
+    identificador entre comillas angulares o inversas. Encontro dos
+    terminos que el barrido manual habia pasado por alto.
+    
+    1.1.2 (2026-10-08) Dos textos que no decian la verdad.
     El mensaje que rechaza composiciones en Landsat nombraba SEIS «que
     si tienen equivalente» cuando las ocho funcionan: la lista estaba
     escrita a mano y se quedo atras. Ademas la rama no se alcanzaba

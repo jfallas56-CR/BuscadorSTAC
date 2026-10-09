@@ -1,6 +1,6 @@
 # Buscador STAC: Sentinel, Landsat y Esri Wayback
 
-![version](https://img.shields.io/badge/version-1.1.2-blue)
+![version](https://img.shields.io/badge/version-1.2.0-blue)
 ![QGIS](https://img.shields.io/badge/QGIS-%E2%89%A5%203.28-green)
 ![licencia](https://img.shields.io/badge/licencia-GPL%20v2%2B-orange)
 
@@ -42,14 +42,14 @@ ordena la revisión.
 
 **Descarga y composiciones**
 
-- Modo remoto: carga los assets como capas `/vsicurl/` acotadas al AOI, sin
+- Modo remoto: carga los recursos como capas `/vsicurl/` acotadas al AOI, sin
   ocupar disco.
 - Modo descarga: GeoTIFF comprimido recortado al AOI, en el SRC nativo de la
   escena.
 - Ocho composiciones RGB (color natural, infrarrojo color, agricultura,
   vegetación sana, análisis de vegetación, SWIR urbano, penetración
   atmosférica, geología). **Las ocho funcionan en Sentinel-2 y en Landsat**:
-  ninguna necesita borde rojo ni el asset TCI.
+  ninguna necesita borde rojo ni el recurso TCI.
 
 ### Las bandas no se llaman igual en los dos sensores
 
@@ -511,6 +511,7 @@ Copyright © 2026 Jorge Fallas <jfallas56@gmail.com>
 
 | Versión | Fecha | Cambios |
 |---|---|---|
+| 1.2.0 | 2026-10-09 | La interfaz, toda en español: «Bandas / recursos espectrales», «línea de corte», «filtro de moteado», «borde rojo». Los identificadores —el campo `assets`, `raster:bands`— se conservan. |
 | 1.1.2 | 2026-10-08 | El mensaje de rechazo en Landsat nombraba seis composiciones de ocho; ahora se calcula. El README anunciaba una composición inexistente y no decía que NDRE y CIre son solo de Sentinel-2. |
 | 1.1.1 | 2026-10-08 | Completa la migración de 1.1.0: los índices espectrales y la miniatura compuesta seguían usando las claves antiguas y fallaban en silencio. Preflight lo comprueba ahora. |
 | 1.1.0 | 2026-10-08 | Las etiquetas y los nombres de archivo dejan de atribuir bandas de Sentinel-2 a escenas de Landsat. Una sola tabla de bandas, con clave estable, y sufijo de archivo por sensor. |

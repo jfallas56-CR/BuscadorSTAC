@@ -25,7 +25,7 @@ cambió ni una línea de ellos.
 
 Autor    : Jorge Fallas (jfallas56@gmail.com)
 Licencia : GPL v2 o posterior
-Versión  : 1.1.2
+Versión  : 1.2.0
 """
 
 import datetime
@@ -257,7 +257,7 @@ def _items_desde_capa(fuente, feedback):
         if not assets:
             feedback.pushWarning(
                 f"[_items_desde_capa] Entidad {feat.id()} sin URL de "
-                f"assets; omitida.")
+                f"recursos; omitida.")
             continue
 
         fecha = feat['fecha'] or ''

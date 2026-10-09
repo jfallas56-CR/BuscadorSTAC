@@ -746,6 +746,64 @@ def comp_metodos_resueltos(inf):
                   'no se resuelven: ' + '; '.join(sorted(set(huerfanos))))
 
 
+def comp_interfaz_en_espanol(inf):
+    """Ninguna palabra inglesa suelta en lo que lee el usuario.
+
+    La interfaz de este complemento es en espanol. Se colaban terminos
+    del ingles por la via de menor resistencia --el nombre del campo STAC,
+    el del argumento de GDAL-- y acababan en rotulos de parametro y en el
+    registro: «Bandas / assets individuales», «Cutline preparado»,
+    «Filtro de speckle», «Browse for Layer...» (que ademas es el rotulo
+    del QGIS en INGLES: en un QGIS en espanol ese texto no aparece, de
+    modo que la instruccion mandaba a buscar algo inexistente).
+
+    Se revisan solo las cadenas que llegan al usuario: tr(), setHelp(),
+    pushInfo() y pushWarning(). Los identificadores de Python, los nombres
+    de campo de la capa y las claves de las API quedan fuera a proposito:
+    renombrar el campo «assets» rompe las capas de huellas ya guardadas.
+    """
+    inf.seccion('Interfaz en espanol')
+    # Palabras que no deben aparecer como TEXTO. Si alguna hace falta como
+    # identificador --«assets» es un campo de la capa-- se escribe entre
+    # comillas angulares o inversas y esta comprobacion la respeta.
+    prohibidas = re.compile(
+        r'\b(assets?|cutline|speckle|footprints?|browse|layer|stretch|'
+        r'download|folder|preview|thumbnail|overlay|red\s+edge)\b',
+        re.IGNORECASE)
+    # Lo protegido: entre «...», entre `...`, o pegado a un punto o guion
+    # bajo (raster:bands, speckle_filter, gdal.Warp).
+    protegido = re.compile(
+        r'«[^»]*»|`[^`]*`|\w+[:._]\w+|<i>[^<]*</i>')
+
+    hallazgos = []
+    for archivo in sorted(os.listdir(DIR_PAQUETE)):
+        if not archivo.endswith('.py'):
+            continue
+        try:
+            arbol = ast.parse(_texto(os.path.join(DIR_PAQUETE, archivo)))
+        except SyntaxError:
+            continue
+        for nodo in ast.walk(arbol):
+            if not (isinstance(nodo, ast.Call)
+                    and isinstance(nodo.func, ast.Attribute)
+                    and nodo.func.attr in ('tr', 'setHelp', 'pushInfo',
+                                           'pushWarning')):
+                continue
+            for hijo in ast.walk(nodo):
+                if not (isinstance(hijo, ast.Constant)
+                        and isinstance(hijo.value, str)):
+                    continue
+                limpio = protegido.sub(' ', hijo.value)
+                for m in prohibidas.finditer(limpio):
+                    linea = getattr(hijo, 'lineno', nodo.lineno)
+                    hallazgos.append(
+                        f'{archivo}:{linea} «{m.group()}»')
+    inf.comprobar('la interfaz no deja palabras inglesas sueltas',
+                  not hallazgos,
+                  'traducir o marcar como identificador: '
+                  + '; '.join(sorted(set(hallazgos))[:8]))
+
+
 def comp_claves_de_banda(inf):
     """Ninguna tabla indexada por la etiqueta que ve el usuario.
 
@@ -1213,6 +1271,7 @@ def main(argv=None):
     comp_ids_algoritmos(inf)
     comp_tildes(inf)
     comp_metodos_resueltos(inf)
+    comp_interfaz_en_espanol(inf)
     comp_claves_de_banda(inf)
     comp_padres_de_campo(inf)
     comp_ayuda_parametros(inf)
