@@ -653,12 +653,13 @@ def test_detecta_una_composicion_que_cita_una_banda_inexistente(copia):
     """Al migrar a clave estable, una banda no migrada no da error solo."""
     ruta = os.path.join(copia, PAQUETE, 'buscar_sentinel2_algoritmo.py')
     fuente = open(ruta, encoding='utf-8').read()
-    ancla = '    ("Color natural — rojo/verde/azul", "NAT",\n     ("red", "green", "blue")),'
+    # Se ancla en la TUPLA DE BANDAS, no en la etiqueta: la etiqueta es
+    # justo lo que cambia cuando se mejora el texto, y anclarla ahi hacia
+    # que esta prueba se rompiera por un cambio de redaccion.
+    ancla = '("red", "green", "blue")),'
     assert ancla in fuente, 'cambio la composicion de referencia'
     roto = fuente.replace(
-        ancla,
-        '    ("Color natural — rojo/verde/azul", "NAT",\n'
-        '     ("rojo_inventado", "green", "blue")),', 1)
+        ancla, '("rojo_inventado", "green", "blue")),', 1)
     open(ruta, 'w', encoding='utf-8').write(roto)
 
     _, datos = _correr(copia)

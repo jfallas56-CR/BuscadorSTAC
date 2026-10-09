@@ -1,6 +1,6 @@
 # Buscador STAC: Sentinel, Landsat y Esri Wayback
 
-![version](https://img.shields.io/badge/version-1.2.0-blue)
+![version](https://img.shields.io/badge/version-1.2.1-blue)
 ![QGIS](https://img.shields.io/badge/QGIS-%E2%89%A5%203.28-green)
 ![licencia](https://img.shields.io/badge/licencia-GPL%20v2%2B-orange)
 
@@ -51,6 +51,13 @@ ordena la revisión.
   atmosférica, geología). **Las ocho funcionan en Sentinel-2 y en Landsat**:
   ninguna necesita borde rojo ni el recurso TCI.
 
+  «RGB» son los tres **cañones de color de la pantalla**, no las bandas roja,
+  verde y azul. Cada composición asigna una banda cualquiera a cada cañón, y
+  por eso el rótulo lo marca: en `Agricultura — R:SWIR 1 · G:NIR · B:azul`, el
+  infrarrojo de onda corta se muestra en rojo. La única donde banda y cañón
+  coinciden es `Color natural`, que es justo lo que la hace engañosa si se lee
+  primero.
+
 ### Las bandas no se llaman igual en los dos sensores
 
 Los dos catálogos se piden con las mismas claves comunes del STAC, pero esas
@@ -70,7 +77,8 @@ incluso con numeración distinta según el satélite:
 
 Por eso las etiquetas del diálogo nombran **los dos sensores** —`rojo — S2 B04
 10 m · Landsat red 30 m`— y las composiciones se nombran por banda común
-(`Infrarrojo color — NIR/rojo/verde`) en vez de por número: un número sería el
+(`Infrarrojo color — R:NIR · G:rojo · B:verde`) en vez de por número: un
+número sería el
 de Sentinel-2 y en Landsat sería otro, además de cambiar entre L4/5/7 y L8-9.
 
 Lo mismo vale para el nombre del archivo, que es donde más duele equivocarse
@@ -511,6 +519,7 @@ Copyright © 2026 Jorge Fallas <jfallas56@gmail.com>
 
 | Versión | Fecha | Cambios |
 |---|---|---|
+| 1.2.1 | 2026-10-09 | Cada composición marca a qué cañón de color va cada banda: «Agricultura — R:SWIR 1 · G:NIR · B:azul». «RGB» son los cañones de la pantalla, no las bandas roja/verde/azul. |
 | 1.2.0 | 2026-10-09 | La interfaz, toda en español: «Bandas / recursos espectrales», «línea de corte», «filtro de moteado», «borde rojo». Los identificadores —el campo `assets`, `raster:bands`— se conservan. |
 | 1.1.2 | 2026-10-08 | El mensaje de rechazo en Landsat nombraba seis composiciones de ocho; ahora se calcula. El README anunciaba una composición inexistente y no decía que NDRE y CIre son solo de Sentinel-2. |
 | 1.1.1 | 2026-10-08 | Completa la migración de 1.1.0: los índices espectrales y la miniatura compuesta seguían usando las claves antiguas y fallaban en silencio. Preflight lo comprueba ahora. |

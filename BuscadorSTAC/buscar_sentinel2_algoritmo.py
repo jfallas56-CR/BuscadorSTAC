@@ -27,7 +27,7 @@ No requiere credenciales para Earth Search. Planetary Computer usa un
 token SAS anónimo gratuito que el algoritmo solicita automáticamente.
 
 Autor  : Jorge Fallas (jfallas56@gmail.com)
-Versión: 1.2.0
+Versión: 1.2.1
 
 Historial:
     1.0.0 (2026-10-02): Primera versión pública.
@@ -216,25 +216,30 @@ QA_RELLENO = 1
 # trabajar con las bandas sueltas del parámetro «Bandas / recursos
 # espectrales».
 COMPOSICIONES = [
-    # La etiqueta NO lleva numeros de banda: serian los de Sentinel-2 y
-    # enganarian con Landsat, donde ademas la numeracion cambia entre
-    # TM/ETM+ y OLI. Los nombres comunes valen en los dos sensores, y la
-    # tabla por sensor esta en la ayuda del parametro.
-    ("Color natural — rojo/verde/azul", "NAT",
+    # La etiqueta marca el CANAL de pantalla de cada banda —R:, G:, B:— y no
+    # solo las lista. Sin esa marca, «Agricultura — SWIR 1/NIR/azul» se lee
+    # como tres colores, cuando lo que dice es que el SWIR 1 va al cañón
+    # rojo. Y la primera entrada enseña justo lo contrario: en «Color
+    # natural» banda y canal coinciden, de modo que quien la lee primero
+    # deduce la regla equivocada para las otras siete.
+    #
+    # No se ponen números de banda: serían los de Sentinel-2 y en Landsat
+    # son otros, que además cambian entre TM/ETM+ y OLI.
+    ("Color natural — R:rojo · G:verde · B:azul", "NAT",
      ("red", "green", "blue")),
-    ("Infrarrojo color — NIR/rojo/verde", "IRC",
+    ("Infrarrojo color — R:NIR · G:rojo · B:verde", "IRC",
      ("nir", "red", "green")),
-    ("Agricultura — SWIR 1/NIR/azul", "AGR",
+    ("Agricultura — R:SWIR 1 · G:NIR · B:azul", "AGR",
      ("swir16", "nir", "blue")),
-    ("Vegetación sana — NIR estrecho/SWIR 1/azul", "VEG",
+    ("Vegetación sana — R:NIR estrecho · G:SWIR 1 · B:azul", "VEG",
      ("nir08", "swir16", "blue")),
-    ("Análisis de vegetación — SWIR 1/NIR/rojo", "ANV",
+    ("Análisis de vegetación — R:SWIR 1 · G:NIR · B:rojo", "ANV",
      ("swir16", "nir", "red")),
-    ("Falso color urbano / SWIR — SWIR 2/SWIR 1/rojo", "URB",
+    ("Falso color urbano / SWIR — R:SWIR 2 · G:SWIR 1 · B:rojo", "URB",
      ("swir22", "swir16", "red")),
-    ("Penetración atmosférica — SWIR 2/SWIR 1/NIR estrecho", "PEN",
+    ("Penetración atmosférica — R:SWIR 2 · G:SWIR 1 · B:NIR estrecho", "PEN",
      ("swir22", "swir16", "nir08")),
-    ("Geología — SWIR 2/SWIR 1/azul", "GEO",
+    ("Geología — R:SWIR 2 · G:SWIR 1 · B:azul", "GEO",
      ("swir22", "swir16", "blue")),
 ]
 
@@ -986,7 +991,7 @@ def _geom_desde_geojson(gj):
 # --------------------------------------------------------------------------
 class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
 
-    VERSION = 'v1.2.0'
+    VERSION = 'v1.2.1'
 
     # Lógica pura, definida en core.py y reenganchada aquí como
     # staticmethod. Así cada sitio de llamada sigue siendo
@@ -1148,7 +1153,9 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             "el campo «catalogo» y la ejecución se rechaza si no coincide, "
             "porque «sentinel-2-l2a» existe en Earth Search y en Planetary "
             "Computer y las URL de una no sirven en la otra.<br><br>"
-            "<b>Composiciones RGB:</b> si selecciona una (infrarrojo color, "
+            "<b>Composiciones RGB:</b> «RGB» son los tres cañones de color de "
+            "la pantalla, no las bandas roja/verde/azul; cada entrada marca "
+            "qué banda va a cada cañón. Si selecciona una (infrarrojo color, "
             "agricultura, SWIR…), el algoritmo apila las tres bandas en un VRT "
             "multibanda y aplica realce por percentiles 2-98 al cargar. En modo "
             "remoto el VRT no descarga píxeles; en modo descarga produce un "
@@ -1464,14 +1471,21 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             options=[c[0] for c in COMPOSICIONES],
             allowMultiple=True, defaultValue=[], optional=True)
         p.setHelp(self.tr(
-            'Genera una capa RGB de 3 bandas por escena y por composición '
+            '<b>Qué significa «RGB» aquí.</b> No son las bandas roja, verde y '
+            'azul: son los tres <b>cañones de color de la pantalla</b>. Una '
+            'composición asigna una banda cualquiera a cada uno, y por eso '
+            'cada entrada lo marca: en «Agricultura — R:SWIR 1 · G:NIR · '
+            'B:azul», el infrarrojo de onda corta se muestra en ROJO. La '
+            'única donde banda y cañón coinciden es «Color natural», que es '
+            'justo lo que la hace engañosa si se lee primero.<br><br>'
+            'Genera una capa de 3 bandas por escena y por composición '
             'elegida. Puede marcar varias: con N escenas y M composiciones se '
             'producen N x M capas, nombradas con el sufijo de cada una (IRC, '
             'AGR, URB…), de modo que se pueden comparar lado a lado.<br>'
-            'Infrarrojo color (NIR/rojo/verde) resalta vegetación en rojo; '
-            'Agricultura (SWIR 1/NIR/azul) separa cultivos de bosque; '
-            'SWIR (SWIR 2/SWIR 1/rojo) penetra humo y delimita cicatrices de '
-            'fuego.<br>'
+            'Infrarrojo color resalta la vegetación en rojo —el NIR va al '
+            'cañón rojo y la vegetación sana refleja mucho NIR—; Agricultura '
+            'separa cultivos de bosque; SWIR urbano penetra el humo y '
+            'delimita cicatrices de fuego.<br>'
             'Las composiciones se nombran por banda común y no por número, '
             'porque los números serían los de Sentinel-2 y en Landsat son '
             'otros —y cambian entre L4/5/7 y L8-9—. La tabla de '
@@ -1479,7 +1493,7 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             'espectrales».<br>'
             'Sin ninguna marcada se usan las bandas sueltas del parámetro '
             'siguiente.<br>'
-            'Esto son capas RGB para interpretación visual. Los valores '
+            'Esto son capas en color para interpretación visual. Los valores '
             'calculados (NDVI, NDMI, NBR, Tasseled Cap) están en el '
             'parámetro «Índices espectrales», más abajo.'))
         self.addParameter(p)

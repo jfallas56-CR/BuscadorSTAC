@@ -11,7 +11,7 @@ about=Cuatro algoritmos de Processing. El primero consulta catalogos STAC public
     El tercero trabaja Sentinel-1 RTC a traves de ASF HyP3, en tres modos: inventario por traza sin consumir creditos, pedido de trabajos RTC con confirmacion explicita de gasto, y colecta de datos con amplitud estacional de retrodispersion. La colecta escribe la amplitud, las DOS medianas por estacion --sin ellas no se sabe sobre que nivel se mide la diferencia--, el recuento de observaciones por pixel y un informe HTML de auditoria autocontenido, y puede reproyectar los productos finales al SRC que se indique, por ejemplo CRTM05. El radar no pierde datos por nube, que es justo la debilidad de la mediana de estacion lluviosa en el camino optico; en cambio responde a la humedad del suelo, asi que es un indicador confundido de otra manera y vale como contraste, no como sustituto. No se mezclan trazas: cada orbita relativa observa con otro angulo de incidencia, de modo que la traza va en el nombre del archivo.
     El cuarto exporta la capa elegida a KMZ y la abre en Google Earth. Un raster se RENDERIZA antes con la simbologia que se ve en QGIS, porque KML no guarda valores sino imagenes pegadas al terreno: volcar un GeoTIFF de NDVI sin renderizar daria una imagen gris ilegible. Lo vectorial va por LIBKML y conserva los atributos; indicando un campo de fecha, cada entidad sale con su TimeStamp y Google Earth muestra el control deslizante de tiempo, util para recorrer una serie de huellas en vez de verlas encimadas. El KMZ lo leen todas las versiones de Google Earth, pero abrirlo solo se puede automatizar en la de escritorio: Earth Web y las apps moviles no permiten que otra aplicacion les entregue un archivo, de modo que para esas el algoritmo deja el archivo y dice como importarlo.
     Datos: Copernicus Sentinel-1 y Sentinel-2 (ESA) y Landsat Collection 2 (USGS/NASA), de acceso abierto; productos RTC generados por ASF DAAC HyP3 con software GAMMA, que requiere una cuenta gratuita de Earthdata Login. Las imagenes de Esri NO son dato abierto: se rigen por el Esri Master License Agreement.
-version=1.2.0
+version=1.2.1
 author=Jorge Fallas
 email=jfallas56@gmail.com
 tracker=https://github.com/jfallas56-CR/BuscadorSTAC/issues
@@ -24,7 +24,21 @@ hasProcessingProvider=yes
 experimental=False
 deprecated=False
 server=False
-changelog=1.2.0 (2026-10-09) La interfaz, toda en espanol.
+changelog=1.2.1 (2026-10-09) Cada composicion dice a que canon va cada banda.
+    «RGB» nombra los tres canones de color de la PANTALLA, no las bandas
+    roja, verde y azul, pero el rotulo no lo decia: «Agricultura — SWIR
+    1/NIR/azul» se lee como una lista de colores cuando lo que dice es
+    que el SWIR 1 se muestra en rojo. Y la primera entrada ensenaba la
+    regla contraria: en «Color natural» banda y canon coinciden, asi que
+    quien la leia primero deducia mal las otras siete.
+    Ahora cada entrada marca el canon: «Agricultura — R:SWIR 1 · G:NIR ·
+    B:azul». La ayuda del parametro y la de shortHelpString explican la
+    convencion en vez de suponerla.
+    La 1.1.0 habia empeorado esto sin querer: al cambiar «B11/B08/B02»
+    por nombres comunes metio la palabra «azul» en la lista, y un numero
+    de banda no se confunde con un color pero un nombre si.
+    
+    1.2.0 (2026-10-09) La interfaz, toda en espanol.
     «Bandas / assets individuales» pasa a «Bandas / recursos
     espectrales», y con el resto del barrido: «Cargar assets remotos» ->
     «Cargar recursos remotos», «cutline» -> «linea de corte», «Filtro de
