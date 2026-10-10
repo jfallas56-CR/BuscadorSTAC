@@ -25,7 +25,7 @@ cambió ni una línea de ellos.
 
 Autor    : Jorge Fallas (jfallas56@gmail.com)
 Licencia : GPL v2 o posterior
-Versión  : 1.3.0
+Versión  : 1.3.1
 """
 
 import datetime

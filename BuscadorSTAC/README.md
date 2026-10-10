@@ -1,6 +1,6 @@
 # Buscador STAC: Sentinel, Landsat y Esri Wayback
 
-![version](https://img.shields.io/badge/version-1.3.0-blue)
+![version](https://img.shields.io/badge/version-1.3.1-blue)
 ![QGIS](https://img.shields.io/badge/QGIS-%E2%89%A5%203.28-green)
 ![licencia](https://img.shields.io/badge/licencia-GPL%20v2%2B-orange)
 
@@ -168,6 +168,14 @@ discriminante limpio de leñosas, es uno **confundido de otra manera**. El
 valor está en cruzarlo con la amplitud óptica y, si hace falta, con HV en
 banda L: los tres fallan por motivos distintos.
 
+**Dónde se calcula la amplitud óptica.** No en este algoritmo: el de radar no
+tiene parámetros ópticos —su único filtro es el de moteado, que es de SAR—. La
+amplitud de NDMI, NBR o cualquier otro índice la produce **Buscar y descargar
+Sentinel-2 / Landsat**, en modo de descarga, marcando los índices en «Índices
+espectrales» y activando «Calcular amplitud fenológica». Use los **mismos meses
+de estación** en ambos y los dos rásteres serán comparables: los dos usan el
+signo seca − lluviosa.
+
 **No se mezclan trazas.** Cada órbita relativa observa con otro ángulo de
 incidencia y otra dirección de mirada, así que el retrodispersado del mismo
 suelo cambia entre trazas por geometría y no por vegetación. Una amplitud
@@ -185,13 +193,14 @@ resultados.
    la que limita una diferencia de medianas.
 2. **Pedido** — envía los trabajos RTC y escribe un manifiesto JSON. Exige
    marcar una casilla de confirmación y respeta un tope de créditos
-   comprobado en el diálogo. Un envío fallido **no se reintenta**: si la
-   petición llegó al servidor, repetirla gastaría los créditos dos veces.
-2. **Pedido** — además comprueba el **saldo real** de créditos en HyP3
-   antes de enviar, no la asignación mensual: si no alcanza, dice cuánto
-   falta y a qué espaciamiento sí cabrían los mismos gránulos.
-3. **Colecta de datos** — repetible. Lee el manifiesto, consulta el estado,
-   recorta por `/vsicurl/` los productos listos y calcula la amplitud.
+   comprobado en el diálogo. Antes de enviar comprueba el **saldo real** de
+   créditos en HyP3, no la asignación mensual: si no alcanza, dice cuánto
+   falta y a qué espaciamiento sí cabrían los mismos gránulos. Un envío
+   fallido **no se reintenta**: si la petición llegó al servidor, repetirla
+   gastaría los créditos dos veces.
+3. **Colecta de datos: productos y amplitud estacional de retrodispersión** —
+   repetible. Lee el manifiesto, consulta el estado, recorta por `/vsicurl/`
+   los productos listos y calcula la amplitud.
 
 **Qué escribe la colecta.**
 
@@ -528,6 +537,7 @@ Copyright © 2026 Jorge Fallas <jfallas56@gmail.com>
 
 | Versión | Fecha | Cambios |
 |---|---|---|
+| 1.3.1 | 2026-10-09 | El tercer modo del radar dice que su amplitud es **de retrodispersión**, y cada algoritmo remite al otro para la amplitud que no calcula. Corregido un «2. Pedido» duplicado en este README. |
 | 1.3.0 | 2026-10-09 | Las tres componentes de Tasseled Cap en español (brillo, verdor, humedad), cada una con su explicación, y en el orden canónico. **Cambian de posición en la lista**: una selección guardada por índice ya no significa lo mismo. |
 | 1.2.1 | 2026-10-09 | Cada composición marca a qué cañón de color va cada banda: «Agricultura — R:SWIR 1 · G:NIR · B:azul». «RGB» son los cañones de la pantalla, no las bandas roja/verde/azul. |
 | 1.2.0 | 2026-10-09 | La interfaz, toda en español: «Bandas / recursos espectrales», «línea de corte», «filtro de moteado», «borde rojo». Los identificadores —el campo `assets`, `raster:bands`— se conservan. |

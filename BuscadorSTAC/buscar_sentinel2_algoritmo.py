@@ -27,7 +27,7 @@ No requiere credenciales para Earth Search. Planetary Computer usa un
 token SAS anónimo gratuito que el algoritmo solicita automáticamente.
 
 Autor  : Jorge Fallas (jfallas56@gmail.com)
-Versión: 1.3.0
+Versión: 1.3.1
 
 Historial:
     1.0.0 (2026-10-02): Primera versión pública.
@@ -991,7 +991,7 @@ def _geom_desde_geojson(gj):
 # --------------------------------------------------------------------------
 class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
 
-    VERSION = 'v1.3.0'
+    VERSION = 'v1.3.1'
 
     # Lógica pura, definida en core.py y reenganchada aquí como
     # staticmethod. Así cada sitio de llamada sigue siendo
@@ -1118,6 +1118,12 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             f"<b>Buscar y descargar Sentinel-2 / Landsat (STAC / COG)</b> — {self.VERSION}<br><br>"
             "Consulta catálogos STAC públicos y devuelve una capa de huellas con "
             "identificador, fecha, nubosidad, tile MGRS y URL de cada escena.<br><br>"
+            "<b>La amplitud de radar está en otro algoritmo.</b> Este calcula la "
+            "amplitud fenológica de los índices ópticos. La de retrodispersión "
+            "—que no la paran las nubes, pero que la humedad del suelo confunde— "
+            "la produce «Sentinel-1 RTC (ASF HyP3)». Con los mismos meses de "
+            "estación las dos son comparables: ambas usan el signo seca − "
+            "lluviosa.<br><br>"
             "<b>Modos:</b><br>"
             "• <i>Solo catálogo</i>: únicamente la capa de huellas. Útil para "
             "explorar disponibilidad antes de transferir datos.<br>"

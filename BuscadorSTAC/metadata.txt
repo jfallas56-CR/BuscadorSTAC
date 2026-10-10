@@ -11,7 +11,7 @@ about=Cuatro algoritmos de Processing. El primero consulta catalogos STAC public
     El tercero trabaja Sentinel-1 RTC a traves de ASF HyP3, en tres modos: inventario por traza sin consumir creditos, pedido de trabajos RTC con confirmacion explicita de gasto, y colecta de datos con amplitud estacional de retrodispersion. La colecta escribe la amplitud, las DOS medianas por estacion --sin ellas no se sabe sobre que nivel se mide la diferencia--, el recuento de observaciones por pixel y un informe HTML de auditoria autocontenido, y puede reproyectar los productos finales al SRC que se indique, por ejemplo CRTM05. El radar no pierde datos por nube, que es justo la debilidad de la mediana de estacion lluviosa en el camino optico; en cambio responde a la humedad del suelo, asi que es un indicador confundido de otra manera y vale como contraste, no como sustituto. No se mezclan trazas: cada orbita relativa observa con otro angulo de incidencia, de modo que la traza va en el nombre del archivo.
     El cuarto exporta la capa elegida a KMZ y la abre en Google Earth. Un raster se RENDERIZA antes con la simbologia que se ve en QGIS, porque KML no guarda valores sino imagenes pegadas al terreno: volcar un GeoTIFF de NDVI sin renderizar daria una imagen gris ilegible. Lo vectorial va por LIBKML y conserva los atributos; indicando un campo de fecha, cada entidad sale con su TimeStamp y Google Earth muestra el control deslizante de tiempo, util para recorrer una serie de huellas en vez de verlas encimadas. El KMZ lo leen todas las versiones de Google Earth, pero abrirlo solo se puede automatizar en la de escritorio: Earth Web y las apps moviles no permiten que otra aplicacion les entregue un archivo, de modo que para esas el algoritmo deja el archivo y dice como importarlo.
     Datos: Copernicus Sentinel-1 y Sentinel-2 (ESA) y Landsat Collection 2 (USGS/NASA), de acceso abierto; productos RTC generados por ASF DAAC HyP3 con software GAMMA, que requiere una cuenta gratuita de Earthdata Login. Las imagenes de Esri NO son dato abierto: se rigen por el Esri Master License Agreement.
-version=1.3.0
+version=1.3.1
 author=Jorge Fallas
 email=jfallas56@gmail.com
 tracker=https://github.com/jfallas56-CR/BuscadorSTAC/issues
@@ -24,7 +24,26 @@ hasProcessingProvider=yes
 experimental=False
 deprecated=False
 server=False
-changelog=1.3.0 (2026-10-09) Tasseled Cap, en espanol y en su orden.
+changelog=1.3.1 (2026-10-09) Queda claro de QUE es cada amplitud.
+    El tercer modo del radar se llamaba «Colecta de datos: productos y
+    amplitud estacional», sin decir de que. Leido dentro de un algoritmo
+    de radar, es razonable esperar poder elegir ahi los indices opticos,
+    y no se puede: ese algoritmo no tiene ningun parametro optico --su
+    unico filtro es el de moteado, que es de SAR--. Ahora dice
+    «...amplitud estacional de retrodispersion».
+    Lo refuerzan cuatro parametros que aparecen con el MISMO nombre en
+    los dos algoritmos: meses de estacion seca, meses de estacion
+    lluviosa, minimo de observaciones por pixel y carpeta de salida. Por
+    eso cada ayuda remite ahora a la otra: el radar dice donde se calcula
+    la amplitud optica y el optico donde esta la de radar, con la nota de
+    que usando los mismos meses las dos son comparables --ambas usan el
+    signo seca menos lluviosa--. La ayuda del radar ya recomendaba cruzar
+    las dos sin decir de donde sale la otra.
+    Corregido ademas un duplicado en el README del paquete: el punto «2.
+    Pedido» aparecia dos veces, de cuando se anadio la comprobacion de
+    saldo. Fundidos en uno.
+    
+    1.3.0 (2026-10-09) Tasseled Cap, en espanol y en su orden.
     Las tres componentes se llamaban «Wetness», «Greenness» y
     «Brightness», y solo la primera traia explicacion, de modo que el
     unico termino explicado estaba junto a dos sin explicar. Ahora:

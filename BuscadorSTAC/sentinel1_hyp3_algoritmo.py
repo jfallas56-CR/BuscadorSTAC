@@ -51,7 +51,7 @@ El token se escribe en el parámetro correspondiente y NO se guarda en
 ninguna parte: ni en el proyecto, ni en el manifiesto, ni en el registro.
 
 Autor  : Jorge Fallas (jfallas56@gmail.com)
-Versión: 1.3.0
+Versión: 1.3.1
 Licencia: GPL v2 o posterior
 
 Historial:
@@ -180,7 +180,7 @@ NODATA_RESPALDO = 0.0
 MODOS = [
     "Inventario — qué hay sobre el AOI (no consume créditos)",
     "Pedir trabajos RTC a HyP3 (CONSUME créditos)",
-    "Colecta de datos: productos y amplitud estacional",
+    "Colecta de datos: productos y amplitud estacional de retrodispersión",
 ]
 
 ORBITAS = ["Cualquiera", "Ascendente", "Descendente"]
@@ -665,7 +665,7 @@ class Sentinel1Hyp3Algorithm(QgsProcessingAlgorithm):
     CARPETA = 'CARPETA'
     SALIDA = 'SALIDA'
 
-    VERSION = 'v1.3.0'
+    VERSION = 'v1.3.1'
 
     def __init__(self):
         super().__init__()
@@ -722,6 +722,15 @@ con fuerza a la <b>humedad del suelo</b>: un potrero desnudo también presenta
 amplitud estacional grande, sin vegetación de por medio. No es un
 discriminante limpio de leñosas, es uno confundido de otra manera. El valor
 está en cruzarlo con la amplitud óptica.</p>
+
+<p><b>Dónde se calcula la amplitud óptica.</b> Aquí no: este algoritmo solo ve
+radar, y no tiene parámetros ópticos —el único filtro es el de moteado, que es
+de SAR—. La amplitud de NDMI, NBR o cualquier otro índice la produce
+<b>«Buscar y descargar Sentinel-2 / Landsat (STAC / COG)»</b>, en modo de
+descarga, marcando los índices en «Índices espectrales» y activando «Calcular
+amplitud fenológica (seca − lluviosa)». Use los MISMOS meses de estación en los
+dos algoritmos y los dos rásteres serán comparables: ambos usan el signo
+seca&nbsp;&minus;&nbsp;lluviosa.</p>
 
 <p><b>No se mezclan trazas.</b> Cada órbita relativa mira con otro ángulo de
 incidencia, de modo que el retrodispersado del mismo suelo cambia entre
