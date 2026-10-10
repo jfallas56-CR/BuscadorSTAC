@@ -4,14 +4,14 @@ qgisMinimumVersion=3.28
 qgisMaximumVersion=4.99
 description=Busca y descarga escenas Sentinel-2 y Landsat desde catalogos STAC, con recorte al AOI, indices espectrales y amplitud fenologica seca-lluviosa. Ademas Esri World Imagery historica, Sentinel-1 RTC por radar y exportacion a Google Earth (KMZ).
 about=Cuatro algoritmos de Processing. El primero consulta catalogos STAC publicos (Element84 Earth Search, Microsoft Planetary Computer) y trabaja los datos por COG sobre /vsicurl/, sin descargas innecesarias.
-    Funciones principales: capa vectorial de huellas con metadatos e hoja de contactos HTML para revisar escenas antes de descargar; nubosidad medida DENTRO del AOI con SCL (Sentinel-2) o QA_PIXEL (Landsat), no la del mosaico de 110 km; carga de assets remotos por /vsicurl/ o descarga de recortes GeoTIFF comprimidos; ocho composiciones RGB; diez indices espectrales (NDVI, SAVI, NDMI, NBR, MSI, NDRE, CIre y Tasseled Cap brightness/greenness/wetness con coeficientes por sensor); amplitud fenologica estacional por mediana con recuento de observaciones por pixel; y simbologia comparable entre fechas (media +- N sigma, limites fijos, paletas divergentes ancladas en cero).
+    Funciones principales: capa vectorial de huellas con metadatos e hoja de contactos HTML para revisar escenas antes de descargar; nubosidad medida DENTRO del AOI con SCL (Sentinel-2) o QA_PIXEL (Landsat), no la del mosaico de 110 km; carga de recursos remotos por /vsicurl/ o descarga de recortes GeoTIFF comprimidos; ocho composiciones RGB; diez indices espectrales (NDVI, SAVI, NDMI, NBR, MSI, NDRE, CIre y Tasseled Cap brillo/verdor/humedad con coeficientes por sensor); amplitud fenologica estacional por mediana con recuento de observaciones por pixel; y simbologia comparable entre fechas (media +- N sigma, limites fijos, paletas divergentes ancladas en cero).
     Los calculos se hacen sobre reflectancia leyendo escala y desplazamiento de raster:bands, incluido el desplazamiento BOA de la linea base 04.00 de Sentinel-2 y el termino aditivo de Landsat Collection 2, que no se cancelan en un cociente.
     Sin credenciales para Earth Search. Planetary Computer usa un token SAS anonimo gratuito que el complemento solicita y renueva por si mismo.
     El segundo algoritmo trae imagenes Esri World Imagery, actuales e historicas (archivo Wayback desde 2014), recortadas al AOI: alta resolucion para fotointerpretar arboles aislados, que a 10-20 m son subpixel. Detecta que versiones del archivo cambian realmente sobre el area y da la fecha de captura real de cada una, no la de publicacion del mosaico.
     El tercero trabaja Sentinel-1 RTC a traves de ASF HyP3, en tres modos: inventario por traza sin consumir creditos, pedido de trabajos RTC con confirmacion explicita de gasto, y colecta de datos con amplitud estacional de retrodispersion. La colecta escribe la amplitud, las DOS medianas por estacion --sin ellas no se sabe sobre que nivel se mide la diferencia--, el recuento de observaciones por pixel y un informe HTML de auditoria autocontenido, y puede reproyectar los productos finales al SRC que se indique, por ejemplo CRTM05. El radar no pierde datos por nube, que es justo la debilidad de la mediana de estacion lluviosa en el camino optico; en cambio responde a la humedad del suelo, asi que es un indicador confundido de otra manera y vale como contraste, no como sustituto. No se mezclan trazas: cada orbita relativa observa con otro angulo de incidencia, de modo que la traza va en el nombre del archivo.
     El cuarto exporta la capa elegida a KMZ y la abre en Google Earth. Un raster se RENDERIZA antes con la simbologia que se ve en QGIS, porque KML no guarda valores sino imagenes pegadas al terreno: volcar un GeoTIFF de NDVI sin renderizar daria una imagen gris ilegible. Lo vectorial va por LIBKML y conserva los atributos; indicando un campo de fecha, cada entidad sale con su TimeStamp y Google Earth muestra el control deslizante de tiempo, util para recorrer una serie de huellas en vez de verlas encimadas. El KMZ lo leen todas las versiones de Google Earth, pero abrirlo solo se puede automatizar en la de escritorio: Earth Web y las apps moviles no permiten que otra aplicacion les entregue un archivo, de modo que para esas el algoritmo deja el archivo y dice como importarlo.
     Datos: Copernicus Sentinel-1 y Sentinel-2 (ESA) y Landsat Collection 2 (USGS/NASA), de acceso abierto; productos RTC generados por ASF DAAC HyP3 con software GAMMA, que requiere una cuenta gratuita de Earthdata Login. Las imagenes de Esri NO son dato abierto: se rigen por el Esri Master License Agreement.
-version=1.2.1
+version=1.3.0
 author=Jorge Fallas
 email=jfallas56@gmail.com
 tracker=https://github.com/jfallas56-CR/BuscadorSTAC/issues
@@ -24,7 +24,34 @@ hasProcessingProvider=yes
 experimental=False
 deprecated=False
 server=False
-changelog=1.2.1 (2026-10-09) Cada composicion dice a que canon va cada banda.
+changelog=1.3.0 (2026-10-09) Tasseled Cap, en espanol y en su orden.
+    Las tres componentes se llamaban «Wetness», «Greenness» y
+    «Brightness», y solo la primera traia explicacion, de modo que el
+    unico termino explicado estaba junto a dos sin explicar. Ahora:
+      Tasseled Cap — Brillo (suelo desnudo y superficies claras)
+      Tasseled Cap — Verdor (densidad de la vegetacion)
+      Tasseled Cap — Humedad (agua en dosel y suelo, sombra)
+    «Tasseled Cap» se conserva: es el nombre propio de la transformacion
+    y no tiene equivalente util en espanol.
+    ATENCION si tiene modelos o scripts guardados: las tres cambian de
+    POSICION en la lista. Estaban al reves del orden canonico de
+    Kauth-Thomas --brillo, verdor, humedad-- que es tambien el de los
+    coeficientes internos. Las posiciones 7 y 9 intercambian significado:
+    lo que antes era TCW ahora es TCB. El codigo no se ve afectado
+    --referencia por sufijo, no por posicion-- y los nombres de archivo
+    (TCB, TCG, TCW) no cambian, pero una seleccion guardada por indice si.
+    La ayuda del parametro explica ahora que son una rotacion de las seis
+    bandas y no cocientes, y que separa cada una.
+    Tambien: la etiqueta de SAVI usa coma decimal (L=0,5), como el resto
+    de la convencion del complemento.
+    Y una fuga del barrido de 1.2.0: metadata.txt no pasa por tr() ni
+    setHelp(), asi que «assets remotos» y «brightness/greenness/wetness»
+    sobrevivieron en el campo «about» --que es justo lo que muestra el
+    portal de complementos--. Corregido, y la comprobacion de preflight
+    revisa ahora name, description y about. Las «tags» quedan fuera a
+    proposito: son claves de busqueda y ahi el ingles es deseable.
+    
+    1.2.1 (2026-10-09) Cada composicion dice a que canon va cada banda.
     «RGB» nombra los tres canones de color de la PANTALLA, no las bandas
     roja, verde y azul, pero el rotulo no lo decia: «Agricultura — SWIR
     1/NIR/azul» se lee como una lista de colores cuando lo que dice es

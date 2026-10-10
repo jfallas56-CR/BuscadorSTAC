@@ -66,7 +66,7 @@ Para productos vectoriales derivados destinados a reporte oficial, conviene
 confirmarlo por escrito. El algoritmo muestra este aviso en cada ejecución.
 
 Autor  : Jorge Fallas (jfallas56@gmail.com)
-Versión: 1.2.1
+Versión: 1.3.0
 Licencia: GPL v2 o posterior
 """
 
@@ -279,7 +279,7 @@ def _fecha_epoch(valor):
 class EsriWaybackAlgorithm(QgsProcessingAlgorithm):
     """World Imagery actual e histórico (Wayback) recortado al AOI."""
 
-    VERSION = 'v1.2.1'
+    VERSION = 'v1.3.0'
 
     AOI = 'AOI'
     EXTENSION = 'EXTENSION'

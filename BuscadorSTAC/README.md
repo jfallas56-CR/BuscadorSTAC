@@ -1,6 +1,6 @@
 # Buscador STAC: Sentinel, Landsat y Esri Wayback
 
-![version](https://img.shields.io/badge/version-1.2.1-blue)
+![version](https://img.shields.io/badge/version-1.3.0-blue)
 ![QGIS](https://img.shields.io/badge/QGIS-%E2%89%A5%203.28-green)
 ![licencia](https://img.shields.io/badge/licencia-GPL%20v2%2B-orange)
 
@@ -93,9 +93,18 @@ que sugerían longitudes de onda distintas.
 
 **Índices y fenología**
 
-- Diez índices espectrales: NDVI, SAVI, NDMI, NBR, MSI, NDRE, CIre y Tasseled
-  Cap (brightness, greenness, wetness), con coeficientes propios de cada
-  sensor. **Ocho de los diez funcionan en los dos sensores**; NDRE y CIre
+- Diez índices espectrales: NDVI, SAVI, NDMI, NBR, MSI, NDRE, CIre y las tres
+  componentes de Tasseled Cap —**brillo**, **verdor** y **humedad**—, con
+  coeficientes propios de cada sensor.
+
+  Las tres componentes son una rotación de las seis bandas, no cocientes, y
+  cada una separa algo distinto: **brillo** es la suma de toda la reflectancia
+  (alto en suelo descubierto, arena, roca y construido; bajo en agua y dosel
+  denso); **verdor** es el contraste entre infrarrojo cercano y visible, el eje
+  de la vegetación; **humedad** es el contraste entre visible+NIR y los dos
+  SWIR, y responde al agua del dosel y del suelo y a la sombra entre copas —la
+  que separa bosque maduro de regeneración—. Se escriben con los sufijos
+  `TCB`, `TCG` y `TCW`. **Ocho de los diez funcionan en los dos sensores**; NDRE y CIre
   necesitan borde rojo y existen solo en Sentinel-2 — el algoritmo los rechaza
   si el catálogo es Landsat.
 
@@ -519,6 +528,7 @@ Copyright © 2026 Jorge Fallas <jfallas56@gmail.com>
 
 | Versión | Fecha | Cambios |
 |---|---|---|
+| 1.3.0 | 2026-10-09 | Las tres componentes de Tasseled Cap en español (brillo, verdor, humedad), cada una con su explicación, y en el orden canónico. **Cambian de posición en la lista**: una selección guardada por índice ya no significa lo mismo. |
 | 1.2.1 | 2026-10-09 | Cada composición marca a qué cañón de color va cada banda: «Agricultura — R:SWIR 1 · G:NIR · B:azul». «RGB» son los cañones de la pantalla, no las bandas roja/verde/azul. |
 | 1.2.0 | 2026-10-09 | La interfaz, toda en español: «Bandas / recursos espectrales», «línea de corte», «filtro de moteado», «borde rojo». Los identificadores —el campo `assets`, `raster:bands`— se conservan. |
 | 1.1.2 | 2026-10-08 | El mensaje de rechazo en Landsat nombraba seis composiciones de ocho; ahora se calcula. El README anunciaba una composición inexistente y no decía que NDRE y CIre son solo de Sentinel-2. |

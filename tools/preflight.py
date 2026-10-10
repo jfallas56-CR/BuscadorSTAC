@@ -798,6 +798,25 @@ def comp_interfaz_en_espanol(inf):
                     linea = getattr(hijo, 'lineno', nodo.lineno)
                     hallazgos.append(
                         f'{archivo}:{linea} «{m.group()}»')
+    # metadata.txt tambien lo lee el usuario --es lo que muestra el portal
+    # de complementos-- y no pasa por tr() ni setHelp(), asi que el barrido
+    # de 1.2.0 lo dejo fuera y «assets remotos» sobrevivio ahi.
+    try:
+        cfg = configparser.ConfigParser()
+        cfg.read(os.path.join(DIR_PAQUETE, 'metadata.txt'), encoding='utf-8')
+        gen = cfg['general']
+    except Exception as e:                      # pragma: no cover
+        inf.comprobar('metadata.txt legible para el barrido', False, str(e))
+        gen = {}
+    # «tags» NO: son claves de busqueda del portal, y ahi el ingles es
+    # deseable --mucha gente busca «download» o «overlay»--. Lo que se
+    # revisa es la prosa que el usuario lee.
+    for campo in ('name', 'description', 'about'):
+        valor = gen.get(campo, '') if gen else ''
+        limpio = protegido.sub(' ', valor)
+        for m in prohibidas.finditer(limpio):
+            hallazgos.append(f'metadata.txt[{campo}] «{m.group()}»')
+
     inf.comprobar('la interfaz no deja palabras inglesas sueltas',
                   not hallazgos,
                   'traducir o marcar como identificador: '

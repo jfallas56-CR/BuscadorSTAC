@@ -25,7 +25,7 @@ cambió ni una línea de ellos.
 
 Autor    : Jorge Fallas (jfallas56@gmail.com)
 Licencia : GPL v2 o posterior
-Versión  : 1.2.1
+Versión  : 1.3.0
 """
 
 import datetime
@@ -92,7 +92,7 @@ TC_ORDEN_BANDAS = (
 INDICES_ESPECTRALES = [
     ("NDVI — vigor general (NIR, Rojo)", "NDVI",
      ('nir', 'red'), False),
-    ("SAVI — NDVI ajustado por suelo, L=0.5", "SAVI",
+    ("SAVI — NDVI ajustado por suelo descubierto (L=0,5)", "SAVI",
      ('nir', 'red'), False),
     ("NDMI — humedad del dosel (NIR, SWIR1)", "NDMI",
      ('nir08', 'swir16'), False),
@@ -104,10 +104,19 @@ INDICES_ESPECTRALES = [
      ('nir08', 'rededge1'), True),
     ("CIre — índice de clorofila borde rojo (solo Sentinel-2)", "CIre",
      ('rededge3', 'rededge1'), True),
-    ("Tasseled Cap — Wetness (humedad y sombra de dosel)", "TCW",
+    # En el orden canonico de Kauth-Thomas --brillo, verdor, humedad-- que
+    # es tambien el de los coeficientes de TC_COEFICIENTES (B, G, W).
+    # Estaban al reves, de modo que quien cruzara la lista con la
+    # bibliografia encontraba la primera componente en el ultimo sitio.
+    #
+    # Las tres llevan ahora su glosa: antes solo la tenia «Wetness», asi
+    # que el unico termino explicado estaba junto a dos sin explicar.
+    ("Tasseled Cap — Brillo (suelo desnudo y superficies claras)", "TCB",
      TC_ORDEN_BANDAS, False),
-    ("Tasseled Cap — Greenness", "TCG", TC_ORDEN_BANDAS, False),
-    ("Tasseled Cap — Brightness", "TCB", TC_ORDEN_BANDAS, False),
+    ("Tasseled Cap — Verdor (densidad de la vegetación)", "TCG",
+     TC_ORDEN_BANDAS, False),
+    ("Tasseled Cap — Humedad (agua en dosel y suelo, sombra)", "TCW",
+     TC_ORDEN_BANDAS, False),
 ]
 
 # Rango físico admisible de cada índice. Fuera de él, el valor no es una

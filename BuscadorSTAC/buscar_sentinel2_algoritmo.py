@@ -27,7 +27,7 @@ No requiere credenciales para Earth Search. Planetary Computer usa un
 token SAS anónimo gratuito que el algoritmo solicita automáticamente.
 
 Autor  : Jorge Fallas (jfallas56@gmail.com)
-Versión: 1.2.1
+Versión: 1.3.0
 
 Historial:
     1.0.0 (2026-10-02): Primera versión pública.
@@ -991,7 +991,7 @@ def _geom_desde_geojson(gj):
 # --------------------------------------------------------------------------
 class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
 
-    VERSION = 'v1.2.1'
+    VERSION = 'v1.3.0'
 
     # Lógica pura, definida en core.py y reenganchada aquí como
     # staticmethod. Así cada sitio de llamada sigue siendo
@@ -1552,6 +1552,19 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             'cerrado y en época lluviosa apenas distingue pasto vigoroso de '
             'árbol. NDRE y CIre añaden separación por clorofila, pero solo '
             'existen en Sentinel-2.<br>'
+            '<b>Las tres componentes de Tasseled Cap</b> son una rotación de '
+            'las seis bandas, no cocientes, y cada una separa una cosa '
+            'distinta:<br>'
+            '• <b>Brillo</b> — suma de toda la reflectancia. Alto en suelo '
+            'descubierto, arena, roca y superficies construidas; bajo en '
+            'agua y en dosel denso.<br>'
+            '• <b>Verdor</b> — contraste entre el infrarrojo cercano y el '
+            'visible. Es el eje de la vegetación, parecido al NDVI pero '
+            'independiente de los otros dos.<br>'
+            '• <b>Humedad</b> — contraste entre visible+NIR y los dos SWIR. '
+            'Responde al agua del dosel y del suelo, y también a la sombra '
+            'entre copas, que es lo que separa bosque maduro de '
+            'regeneración.<br>'
             'El cálculo se hace sobre reflectancia, no sobre DN: se aplica el '
             'escalado del sensor, incluido el desplazamiento BOA de la línea '
             'base 04.00 de Sentinel-2 y el desplazamiento aditivo de Landsat '

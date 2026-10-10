@@ -705,3 +705,22 @@ def test_un_identificador_entre_comillas_no_es_un_falso_positivo(copia):
     assert not _dice(datos, 'palabras inglesas sueltas'), (
         'nombrar el campo entre comillas angulares es legitimo y no debe '
         'bloquear. Bloqueantes: %r' % _bloqueantes(datos))
+
+
+def test_detecta_una_palabra_inglesa_en_metadata(copia):
+    """metadata.txt tambien lo lee el usuario: es lo que muestra el portal.
+
+    El barrido de 1.2.0 solo miraba tr() y setHelp(), asi que «assets
+    remotos» sobrevivio en el campo «about» hasta que alguien lo leyo.
+    """
+    ruta = os.path.join(copia, PAQUETE, 'metadata.txt')
+    fuente = open(ruta, encoding='utf-8').read()
+    ancla = 'carga de recursos remotos'
+    assert ancla in fuente, 'cambio el texto de referencia de la prueba'
+    roto = fuente.replace(ancla, 'carga de assets remotos', 1)
+    open(ruta, 'w', encoding='utf-8').write(roto)
+
+    _, datos = _correr(copia)
+    assert _dice(datos, 'palabras inglesas sueltas'), (
+        'preflight tiene que bloquear: el portal muestra este texto. '
+        'Bloqueantes: %r' % _bloqueantes(datos))
