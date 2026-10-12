@@ -1,6 +1,6 @@
 # Buscador STAC: Sentinel, Landsat y Esri Wayback
 
-![version](https://img.shields.io/badge/version-1.3.3-blue)
+![version](https://img.shields.io/badge/version-1.4.0-blue)
 ![QGIS](https://img.shields.io/badge/QGIS-%E2%89%A5%203.28-green)
 ![licencia](https://img.shields.io/badge/licencia-GPL%20v2%2B-orange)
 
@@ -571,6 +571,7 @@ Copyright © 2026 Jorge Fallas <jfallas56@gmail.com>
 
 | Versión | Fecha | Cambios |
 |---|---|---|
+| 1.4.0 | 2026-10-12 | Resumen en inglés en `about`, `description` bilingüe y cabecera en inglés en el README del repositorio, todos avisando de que la interfaz es solo en español. La interfaz no cambia. |
 | 1.3.3 | 2026-10-12 | Revisión de terminología: el objetivo es cobertura y uso de la tierra, y la separación leñosa/herbácea pasa de ser *el* propósito a ser un ejemplo. Los índices nombran la cantidad que miden, no una clase. |
 | 1.3.2 | 2026-10-12 | El RVI dual-pol se cita: Nasirzadehdizaji et al. (2019), derivado del cuadripolar de Kim y van Zyl (2009) suponiendo σHH ≈ σVV. Con la advertencia de citarlo como «RVI dual-pol». |
 | 1.3.1 | 2026-10-09 | El tercer modo del radar dice que su amplitud es **de retrodispersión**, y cada algoritmo remite al otro para la amplitud que no calcula. Corregido un «2. Pedido» duplicado en este README. |

@@ -724,3 +724,37 @@ def test_detecta_una_palabra_inglesa_en_metadata(copia):
     assert _dice(datos, 'palabras inglesas sueltas'), (
         'preflight tiene que bloquear: el portal muestra este texto. '
         'Bloqueantes: %r' % _bloqueantes(datos))
+
+
+def test_el_resumen_en_ingles_de_about_no_dispara_el_barrido(copia):
+    """El bloque [ENGLISH SUMMARY] es deliberado y no debe bloquear."""
+    ruta = os.path.join(copia, PAQUETE, 'metadata.txt')
+    fuente = open(ruta, encoding='utf-8').read()
+    assert '[ENGLISH SUMMARY]' in fuente, 'cambio el marcador del resumen'
+    _, datos = _correr(copia)
+    assert not _dice(datos, 'palabras inglesas sueltas'), (
+        'el resumen en ingles esta marcado a proposito. Bloqueantes: %r'
+        % _bloqueantes(datos))
+
+
+def test_el_ingles_fuera_del_bloque_marcado_si_dispara(copia):
+    """La exclusion cubre SOLO el bloque marcado, no todo el campo.
+
+    Si cubriera el campo entero, una fuga en la parte espanola de «about»
+    --que es la que lee el usuario hispanohablante-- pasaria sin que nada
+    lo notara.
+    """
+    ruta = os.path.join(copia, PAQUETE, 'metadata.txt')
+    fuente = open(ruta, encoding='utf-8').read()
+    ancla = 'carga de recursos remotos'
+    assert ancla in fuente, 'cambio el texto de referencia'
+    assert fuente.index('[RESUMEN EN ESPANOL]') < fuente.index(ancla), (
+        'el ancla tiene que estar DESPUES del bloque en ingles')
+    roto = fuente.replace(ancla, 'carga de assets remotos', 1)
+    open(ruta, 'w', encoding='utf-8').write(roto)
+
+    _, datos = _correr(copia)
+    assert _dice(datos, 'palabras inglesas sueltas'), (
+        'una fuga en la parte espanola de «about» tiene que bloquear aunque '
+        'el campo contenga un bloque en ingles. Bloqueantes: %r'
+        % _bloqueantes(datos))

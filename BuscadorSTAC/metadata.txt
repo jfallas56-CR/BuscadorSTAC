@@ -2,8 +2,26 @@
 name=Buscador STAC: Sentinel, Landsat y Esri Wayback
 qgisMinimumVersion=3.28
 qgisMaximumVersion=4.99
-description=Busca y descarga escenas Sentinel-2 y Landsat desde catalogos STAC, con recorte al AOI, indices espectrales y amplitud fenologica seca-lluviosa. Ademas Esri World Imagery historica, Sentinel-1 RTC por radar y exportacion a Google Earth (KMZ).
-about=Cuatro algoritmos de Processing. El primero consulta catalogos STAC publicos (Element84 Earth Search, Microsoft Planetary Computer) y trabaja los datos por COG sobre /vsicurl/, sin descargas innecesarias.
+description=Sentinel-2, Landsat, Sentinel-1 RTC y Esri Wayback por STAC/COG con recorte al AOI, indices espectrales y amplitud estacional seca-lluviosa. [EN] Satellite imagery for land cover mapping. UI in Spanish.
+about=[ENGLISH SUMMARY]
+    QGIS plugin for satellite imagery in land cover and land use studies. Four
+    Processing algorithms: (1) search and download Sentinel-2 and Landsat from
+    public STAC catalogues, reading data as COG over /vsicurl/, with cloud cover
+    measured INSIDE the area of interest rather than over the 110 km tile, eight
+    RGB band combinations, ten spectral indices and a dry-minus-wet seasonal
+    amplitude; (2) Esri World Imagery, current and historical (Wayback archive);
+    (3) Sentinel-1 RTC radar through ASF HyP3, with per-track inventory, explicit
+    credit confirmation and seasonal backscatter amplitude; (4) export any layer
+    to Google Earth (KMZ).
+    Works anywhere in the world. Defaults are tuned to Costa Rica (initial extent,
+    dry and wet season months); change the extent or supply an AOI layer.
+    IMPORTANT: the user interface is in SPANISH only. There is no English
+    translation of the dialogs, parameter help or log messages.
+    Requires QGIS 3.28 or later. No pip install needed: it uses only the standard
+    library, GDAL and numpy, which ship with QGIS.
+
+    [RESUMEN EN ESPANOL]
+    Cuatro algoritmos de Processing. El primero consulta catalogos STAC publicos (Element84 Earth Search, Microsoft Planetary Computer) y trabaja los datos por COG sobre /vsicurl/, sin descargas innecesarias.
     Funciones principales: capa vectorial de huellas con metadatos e hoja de contactos HTML para revisar escenas antes de descargar; nubosidad medida DENTRO del AOI con SCL (Sentinel-2) o QA_PIXEL (Landsat), no la del mosaico de 110 km; carga de recursos remotos por /vsicurl/ o descarga de recortes GeoTIFF comprimidos; ocho composiciones RGB; diez indices espectrales (NDVI, SAVI, NDMI, NBR, MSI, NDRE, CIre y Tasseled Cap brillo/verdor/humedad con coeficientes por sensor); amplitud fenologica estacional por mediana con recuento de observaciones por pixel; y simbologia comparable entre fechas (media +- N sigma, limites fijos, paletas divergentes ancladas en cero).
     Los calculos se hacen sobre reflectancia leyendo escala y desplazamiento de raster:bands, incluido el desplazamiento BOA de la linea base 04.00 de Sentinel-2 y el termino aditivo de Landsat Collection 2, que no se cancelan en un cociente.
     Sin credenciales para Earth Search. Planetary Computer usa un token SAS anonimo gratuito que el complemento solicita y renueva por si mismo.
@@ -11,7 +29,7 @@ about=Cuatro algoritmos de Processing. El primero consulta catalogos STAC public
     El tercero trabaja Sentinel-1 RTC a traves de ASF HyP3, en tres modos: inventario por traza sin consumir creditos, pedido de trabajos RTC con confirmacion explicita de gasto, y colecta de datos con amplitud estacional de retrodispersion. La colecta escribe la amplitud, las DOS medianas por estacion --sin ellas no se sabe sobre que nivel se mide la diferencia--, el recuento de observaciones por pixel y un informe HTML de auditoria autocontenido, y puede reproyectar los productos finales al SRC que se indique, por ejemplo CRTM05. El radar no pierde datos por nube, que es justo la debilidad de la mediana de estacion lluviosa en el camino optico; en cambio responde a la humedad del suelo, asi que es un indicador confundido de otra manera y vale como contraste, no como sustituto. No se mezclan trazas: cada orbita relativa observa con otro angulo de incidencia, de modo que la traza va en el nombre del archivo.
     El cuarto exporta la capa elegida a KMZ y la abre en Google Earth. Un raster se RENDERIZA antes con la simbologia que se ve en QGIS, porque KML no guarda valores sino imagenes pegadas al terreno: volcar un GeoTIFF de NDVI sin renderizar daria una imagen gris ilegible. Lo vectorial va por LIBKML y conserva los atributos; indicando un campo de fecha, cada entidad sale con su TimeStamp y Google Earth muestra el control deslizante de tiempo, util para recorrer una serie de huellas en vez de verlas encimadas. El KMZ lo leen todas las versiones de Google Earth, pero abrirlo solo se puede automatizar en la de escritorio: Earth Web y las apps moviles no permiten que otra aplicacion les entregue un archivo, de modo que para esas el algoritmo deja el archivo y dice como importarlo.
     Datos: Copernicus Sentinel-1 y Sentinel-2 (ESA) y Landsat Collection 2 (USGS/NASA), de acceso abierto; productos RTC generados por ASF DAAC HyP3 con software GAMMA, que requiere una cuenta gratuita de Earthdata Login. Las imagenes de Esri NO son dato abierto: se rigen por el Esri Master License Agreement.
-version=1.3.3
+version=1.4.0
 author=Jorge Fallas
 email=jfallas56@gmail.com
 tracker=https://github.com/jfallas56-CR/BuscadorSTAC/issues
@@ -24,7 +42,25 @@ hasProcessingProvider=yes
 experimental=False
 deprecated=False
 server=False
-changelog=1.3.3 (2026-10-12) El objetivo es cobertura y uso, no solo dosel.
+changelog=1.4.0 (2026-10-12) Resumen en ingles para el portal.
+    El portal de complementos se navega en ingles y en todo el mundo, de
+    modo que quien no lee espanol veia solo espanol y pasaba de largo. El
+    complemento no hace nada especifico de Costa Rica --solo los valores
+    por omision lo son--, asi que el publico al que puede servir es mas
+    amplio que el que podia enterarse.
+    Ahora «about» abre con un bloque [ENGLISH SUMMARY] y «description» es
+    bilingue. Ambos dicen explicitamente que LA INTERFAZ ES SOLO EN
+    ESPANOL: eso hay que saberlo antes de instalar, no despues. El README
+    del repositorio tambien abre con un resumen en ingles.
+    La interfaz NO cambia: sigue en espanol a proposito. Lo que se
+    traduce es la capa de descubrimiento --portal y repositorio--, que es
+    otro publico con otra funcion.
+    La comprobacion comp_interfaz_en_espanol excluye el bloque marcado
+    entre [ENGLISH SUMMARY] y [RESUMEN EN ESPANOL], y SOLO ese bloque:
+    una fuga en la parte espanola de «about» sigue bloqueando. Probado en
+    los dos sentidos.
+    
+    1.3.3 (2026-10-12) El objetivo es cobertura y uso, no solo dosel.
     Revision completa de terminologia. El texto estaba escrito como si
     separar vegetacion lenosa de herbacea FUERA el objetivo del
     complemento, cuando es una aplicacion entre varias: cultivos,

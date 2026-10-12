@@ -811,8 +811,18 @@ def comp_interfaz_en_espanol(inf):
     # «tags» NO: son claves de busqueda del portal, y ahi el ingles es
     # deseable --mucha gente busca «download» o «overlay»--. Lo que se
     # revisa es la prosa que el usuario lee.
+    # El campo «about» puede llevar un resumen EN INGLES a proposito: el
+    # portal de complementos se navega en ingles y quien no lee espanol
+    # necesita saber en dos lineas si esto le sirve --y, sobre todo, que la
+    # interfaz es solo en espanol--. Ese bloque va delimitado por marcas
+    # explicitas y se excluye del barrido; el resto del campo no, para que
+    # una fuga de verdad en la parte espanola siga saltando.
+    ingles_a_proposito = re.compile(
+        r'\[ENGLISH SUMMARY\].*?(?=\[RESUMEN EN ESPANOL\]|\Z)', re.S)
     for campo in ('name', 'description', 'about'):
         valor = gen.get(campo, '') if gen else ''
+        if campo == 'about':
+            valor = ingles_a_proposito.sub(' ', valor)
         limpio = protegido.sub(' ', valor)
         for m in prohibidas.finditer(limpio):
             hallazgos.append(f'metadata.txt[{campo}] «{m.group()}»')

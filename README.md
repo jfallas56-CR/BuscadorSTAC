@@ -1,8 +1,24 @@
 # BuscadorSTAC
 
-![version](https://img.shields.io/badge/version-1.3.3-blue)
+![version](https://img.shields.io/badge/version-1.4.0-blue)
 ![QGIS](https://img.shields.io/badge/QGIS-3.28%20–%204.x-green)
 ![licencia](https://img.shields.io/badge/licencia-GPL%20v2%2B-blue)
+
+> **English summary** — QGIS plugin for satellite imagery in land cover and
+> land use studies. Four Processing algorithms: **Sentinel-2 / Landsat** search
+> and download from public STAC catalogues (data read as COG over `/vsicurl/`,
+> cloud cover measured *inside* the area of interest rather than over the
+> 110 km tile, eight RGB band combinations, ten spectral indices, dry-minus-wet
+> seasonal amplitude); **Esri World Imagery** current and historical (Wayback);
+> **Sentinel-1 RTC** radar via ASF HyP3 (per-track inventory, explicit credit
+> confirmation, seasonal backscatter amplitude); and **KMZ export** to Google
+> Earth.
+>
+> Works anywhere — the Costa Rica defaults are just defaults. **The user
+> interface is Spanish only**; there is no English translation of the dialogs,
+> parameter help or log messages. Requires QGIS 3.28+ and no `pip install`.
+
+---
 
 Complemento de QGIS para imágenes satelitales por STAC/COG: busca y descarga
 escenas **Sentinel-2** y **Landsat**, trae radar **Sentinel-1 RTC** a través de

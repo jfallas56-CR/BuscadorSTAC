@@ -51,7 +51,7 @@ El token se escribe en el parámetro correspondiente y NO se guarda en
 ninguna parte: ni en el proyecto, ni en el manifiesto, ni en el registro.
 
 Autor  : Jorge Fallas (jfallas56@gmail.com)
-Versión: 1.3.3
+Versión: 1.4.0
 Licencia: GPL v2 o posterior
 
 Historial:
@@ -689,7 +689,7 @@ class Sentinel1Hyp3Algorithm(QgsProcessingAlgorithm):
     CARPETA = 'CARPETA'
     SALIDA = 'SALIDA'
 
-    VERSION = 'v1.3.3'
+    VERSION = 'v1.4.0'
 
     def __init__(self):
         super().__init__()
