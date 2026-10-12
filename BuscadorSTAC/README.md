@@ -1,6 +1,6 @@
 # Buscador STAC: Sentinel, Landsat y Esri Wayback
 
-![version](https://img.shields.io/badge/version-1.5.0-blue)
+![version](https://img.shields.io/badge/version-1.6.0-blue)
 ![QGIS](https://img.shields.io/badge/QGIS-%E2%89%A5%203.28-green)
 ![licencia](https://img.shields.io/badge/licencia-GPL%20v2%2B-orange)
 
@@ -101,9 +101,46 @@ que sugerían longitudes de onda distintas.
 
 **Índices y fenología**
 
-- Diez índices espectrales: NDVI, SAVI, NDMI, NBR, MSI, NDRE, CIre y las tres
-  componentes de Tasseled Cap —**brillo**, **verdor** y **humedad**—, con
+- Once índices espectrales: NDVI, SAVI, EVI2, NDMI, NBR, MSI, NDRE, CIre y las
+  tres componentes de Tasseled Cap —**brillo**, **verdor** y **humedad**—, con
   coeficientes propios de cada sensor.
+
+  **EVI2** atiende el extremo que el NDVI no cubre. El NDVI se **satura** en
+  cubierta densa: pasado cierto punto, más biomasa ya no lo sube, y un rodal
+  cerrado joven y uno maduro dan casi el mismo valor. El EVI2 sigue
+  respondiendo ahí. Es el complemento del SAVI, no su repetición: el SAVI
+  corrige el lado del suelo descubierto, el EVI2 el de la cubierta cerrada.
+  Su recorrido no es `[-1, 1]` —sobre vegetación va de 0 a ≈0.9— y se acota a
+  `[-1, 2.5]`, que es su ganancia.
+
+  Es el único índice de la lista con coeficientes calibrados, así que lleva su
+  procedencia: Jiang, Huete, Didan y Miura (2008), *Remote Sensing of
+  Environment* 112(10) 3833–3845, ecuación 15.
+
+  ```
+  EVI2 = 2.5 · (NIR − rojo) / (NIR + 2.4 · rojo + 1)
+  ```
+
+  Es la versión de dos bandas del EVI de tres de Huete et al. (2002), y el
+  `2.4` **supone una razón rojo/azul de 2.08**: ésa es la suposición en la que
+  se apoya y el límite de la medida. Se eligió sobre el EVI de tres bandas por
+  dos razones:
+
+  1. En el EVI el azul entra con coeficiente `7.5`, el mayor de la fórmula,
+     siendo la banda más ruidosa. Su papel era corregir el aerosol residual,
+     que en un producto de Nivel 2 ya viene corregido; lo que queda se
+     amplifica por 7.5. Los autores miden que, sobre píxeles de buena calidad
+     y corregidos, EVI y EVI2 difieren casi siempre menos de 0.02.
+  2. Este complemento **no trunca la reflectancia negativa** —el
+     desplazamiento BOA de la línea base 04.00 es de −0.1 y se aplica a
+     propósito—. Con el azul negativo, el término `−7.5 · azul` se vuelve una
+     suma positiva grande y el EVI de tres bandas colapsa hacia cero sobre
+     agua, sombra profunda y cicatrices de quema, sin dar error. Sin banda
+     azul el problema no existe. El denominador del EVI2 tampoco puede
+     acercarse a cero: con ese suelo de −0.1 su mínimo es 0.66.
+
+  Los autores calibraron sobre MODIS, de modo que la relación entre EVI2 y EVI
+  puede variar con la respuesta espectral de cada sensor. Cítelo como «EVI2».
 
   Las tres componentes son una rotación de las seis bandas, no cocientes, y
   cada una separa algo distinto: **brillo** es la suma de toda la reflectancia
@@ -232,11 +269,12 @@ estación, productos con sus estadísticos, entorno, fuentes y licencias. Es
 autocontenido, sin CDN ni fuentes remotas: un informe de auditoría se abre
 cuando hace falta, y entonces puede no haber red.
 
-**SRC de salida.** Los productos de HyP3 vienen en el UTM de la escena
-(EPSG:32616 o 32617 en Costa Rica) y el recorte lo conserva a propósito:
+**SRC de salida.** Los productos de HyP3 vienen en el UTM de la escena y el
+recorte lo conserva a propósito:
 reproyectar la retrodispersión antes de la mediana la remuestrearía 31 veces
 para un estadístico que no depende de la rejilla. Si indica un SRC de salida
-—CRTM05, EPSG:8908— se reproyectan los **productos finales** al terminar, por
+—el nacional o regional con el que trabaje el resto del proyecto— se
+reproyectan los **productos finales** al terminar, por
 vecino más próximo, que conserva los valores medidos a cambio de hasta medio
 píxel de desplazamiento. El método queda escrito en los metadatos del
 archivo.
@@ -533,7 +571,8 @@ resolución submétrica: ahí entra Esri World Imagery.
 **Memoria.** Los índices y la amplitud se calculan cargando cada banda
 completa en memoria, sin proceso por bloques. El complemento estima el pico
 antes de descargar nada y rechaza la ejecución por encima de 4 GiB, indicando
-el tamaño en píxeles. La extensión **por omisión abarca todo Costa Rica** y
+el tamaño en píxeles. La extensión **por omisión abarca un país entero**
+(Costa Rica, que es el valor con el que viene) y
 pediría unos 42 GiB: indique una capa de AOI o encuadre la extensión. Un lote
 de 150 ha ocupa menos de 2 MB y un cuadrado de 100 km cabe de sobra.
 
@@ -599,6 +638,7 @@ Copyright © 2026 Jorge Fallas <jfallas56@gmail.com>
 
 | Versión | Fecha | Cambios |
 |---|---|---|
+| 1.6.0 | 2026-10-12 | **EVI2** (Jiang et al. 2008), once índices: vigor que no se satura en cubierta densa, donde el NDVI deja de informar. Es el único con coeficientes calibrados, así que lleva su procedencia y la suposición en la que se apoya (razón rojo/azul 2.08). Y el texto deja de presentar el complemento como herramienta de Costa Rica: el flujo con nubosidad alta y los meses de estación valen para cualquier región. Lo que se queda es decir cuál es el valor **por omisión**. |
 | 1.5.0 | 2026-10-12 | **Una sola convención numérica, y declarada**: punto decimal, espacio de millar, coma en ningún papel. Convivían tres. Corrige dos defectos reales: los topes de Earth Web salían como «10,000» (que leído en español es diez) y la etiqueta de SAVI enseñaba `L=0,5` dos parámetros antes de «Límites fijos mín,máx», que parte su entrada por la coma y lee `0,5` como el rango 0–5 sin dar error. |
 | 1.4.0 | 2026-10-12 | Resumen en inglés en `about`, `description` bilingüe y cabecera en inglés en el README del repositorio, todos avisando de que la interfaz es solo en español. La interfaz no cambia. |
 | 1.3.3 | 2026-10-12 | Revisión de terminología: el objetivo es cobertura y uso de la tierra, y la separación leñosa/herbácea pasa de ser *el* propósito a ser un ejemplo. Los índices nombran la cantidad que miden, no una clase. |

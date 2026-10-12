@@ -66,7 +66,7 @@ Para productos vectoriales derivados destinados a reporte oficial, conviene
 confirmarlo por escrito. El algoritmo muestra este aviso en cada ejecución.
 
 Autor  : Jorge Fallas (jfallas56@gmail.com)
-Versión: 1.5.0
+Versión: 1.6.0
 Licencia: GPL v2 o posterior
 """
 
@@ -280,7 +280,7 @@ def _fecha_epoch(valor):
 class EsriWaybackAlgorithm(QgsProcessingAlgorithm):
     """World Imagery actual e histórico (Wayback) recortado al AOI."""
 
-    VERSION = 'v1.5.0'
+    VERSION = 'v1.6.0'
 
     AOI = 'AOI'
     EXTENSION = 'EXTENSION'
@@ -371,7 +371,7 @@ class EsriWaybackAlgorithm(QgsProcessingAlgorithm):
             "doscientas versiones globales, pero Esri publica una nueva para "
             "una tesela solo cuando esa imagen cambió. Sobre un lote rural es "
             "habitual que queden cinco o seis versiones distintas en doce "
-            "años, no doscientas: medido sobre un lote de Guanacaste, 5 de "
+            "años, no doscientas: medido sobre un lote rural, 5 de "
             "196. El algoritmo detecta cuáles son, con el mismo método que la "
             "aplicación Wayback de Esri.<br><br>"
             "<b>Modos:</b><br>"

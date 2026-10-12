@@ -23,7 +23,7 @@ complemento. Es el único nombre que QGIS exige aquí; todo lo demás vive en
 los módulos que este importa.
 
 Autor  : Jorge Fallas (jfallas56@gmail.com)
-Versión: 1.5.0
+Versión: 1.6.0
 Licencia: GPL v2 o posterior
 """
 

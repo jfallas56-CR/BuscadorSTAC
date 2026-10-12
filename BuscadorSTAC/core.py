@@ -25,7 +25,7 @@ cambió ni una línea de ellos.
 
 Autor    : Jorge Fallas (jfallas56@gmail.com)
 Licencia : GPL v2 o posterior
-Versión  : 1.5.0
+Versión  : 1.6.0
 """
 
 import datetime
@@ -89,10 +89,50 @@ TC_ORDEN_BANDAS = (
 # Las fórmulas son normalizadas o razones simples: no dependen de coeficientes
 # calibrados por sensor, de modo que son directamente comparables entre
 # Sentinel-2 y Landsat siempre que se calculen sobre reflectancia, no sobre DN.
+#
+# EVI2 es la excepcion y por eso lleva su procedencia, como el RVI dual-pol
+# del algoritmo de radar: sus coeficientes SI estan calibrados.
+#
+#   EVI2 = 2.5 * (NIR - rojo) / (NIR + 2.4*rojo + 1)
+#
+#   Jiang, Huete, Didan y Miura (2008), «Development of a two-band enhanced
+#   vegetation index without a blue band», Remote Sensing of Environment
+#   112(10) 3833-3845, ecuacion 15. doi:10.1016/j.rse.2008.06.006
+#
+# Es la version de dos bandas del EVI de tres de Huete et al. (2002), cuya
+# forma es G*(NIR - rojo)/(NIR + 6*rojo - 7.5*azul + 1). El 2.4 no es un
+# numero libre: sale de 6 - 7.5/c con c = 2.08, la razon rojo/azul que los
+# autores encuentran optima. ESA es la suposicion en la que se apoya, igual
+# que el RVI dual-pol se apoya en sHH ~ sVV, y es el limite de la medida:
+# donde la razon rojo/azul se aparte mucho de 2.08, EVI2 y EVI divergen.
+#
+# Se prefiere al EVI de tres bandas por dos razones, y la segunda es de este
+# codigo:
+#  1. El azul entra en el EVI con coeficiente 7.5, el mayor de la familia, y
+#     es la banda mas ruidosa. Su papel era corregir el aerosol residual, que
+#     en un producto de Nivel 2 ya viene corregido; lo que queda se amplifica
+#     por 7.5. Los autores miden que, sobre pixeles de buena calidad y
+#     corregidos, EVI y EVI2 difieren casi siempre menos de 0.02.
+#  2. Este complemento NO trunca la reflectancia negativa --el desplazamiento
+#     BOA de la linea base 04.00 es de -0.1 y se aplica a proposito--. Con el
+#     azul negativo, el termino -7.5*azul del EVI se vuelve una suma positiva
+#     grande y el indice colapsa hacia cero sobre agua, sombra profunda y
+#     cicatrices de quema: un numero plausible y equivocado, que es la clase
+#     de fallo que este codigo ya ha pagado varias veces. Sin banda azul, el
+#     problema no existe.
+#
+# Los autores calibraron sobre MODIS, de modo que la relacion entre EVI2 y
+# EVI puede variar con la respuesta espectral de cada sensor. Citelo como
+# «EVI2», no como «EVI».
 INDICES_ESPECTRALES = [
     ("NDVI — vigor general (NIR, Rojo)", "NDVI",
      ('nir', 'red'), False),
     ("SAVI — NDVI ajustado por suelo descubierto (L=0.5)", "SAVI",
+     ('nir', 'red'), False),
+    # EVI2 va aqui, junto al SAVI, porque atiende el otro extremo del mismo
+    # problema: el SAVI corrige el lado del suelo descubierto y el EVI2 el
+    # lado de la cubierta densa, donde el NDVI se satura.
+    ("EVI2 — vigor sin saturarse en cubierta densa (NIR, Rojo)", "EVI2",
      ('nir', 'red'), False),
     ("NDMI — humedad de la cubierta (NIR, SWIR1)", "NDMI",
      ('nir08', 'swir16'), False),
@@ -119,6 +159,31 @@ INDICES_ESPECTRALES = [
      TC_ORDEN_BANDAS, False),
 ]
 
+# Coeficientes publicados del EVI2 (Jiang et al. 2008, ec. 15). Con nombre
+# y no incrustados en la fórmula porque son valores CALIBRADOS, igual que
+# TC_COEFICIENTES: un número calibrado suelto en una expresión no se puede
+# comprobar contra su fuente.
+EVI2_G = 2.5     # ganancia
+EVI2_C = 2.4     # = 6 - 7.5/c con c = 2.08, la razón rojo/azul óptima
+EVI2_L = 1.0     # término de ajuste de suelo del denominador
+
+
+def evi2(nir, rojo):
+    """EVI2 de Jiang et al. (2008): vigor que no se satura en dosel denso.
+
+    La fórmula vive aquí, y no junto a las otras siete del algoritmo,
+    porque es la unica con coeficientes calibrados: aquí se puede probar
+    sin QGIS contra los valores publicados. Ver la nota de procedencia
+    sobre INDICES_ESPECTRALES.
+
+    Acepta escalares o arreglos de numpy. El denominador no necesita
+    guarda: con reflectancia por encima del suelo del desplazamiento BOA
+    (-0.1) su mínimo es 0.66, de modo que no se acerca a cero. Esa es
+    justamente la ventaja sobre un índice normalizado.
+    """
+    return EVI2_G * (nir - rojo) / (nir + EVI2_C * rojo + EVI2_L)
+
+
 # Rango físico admisible de cada índice. Fuera de él, el valor no es una
 # medida sino un artefacto de un denominador cercano a cero (ver
 # _acotar_indice). Los componentes Tasseled Cap no se acotan: son
@@ -127,6 +192,15 @@ INDICES_ESPECTRALES = [
 LIMITES_INDICE = {
     'NDVI': (-1.0, 1.0),
     'SAVI': (-1.5, 1.5),      # el factor 1.5 de la fórmula amplía la cota
+    # El 2.5 es la ganancia G, que es el supremo cuando NIR crece sin
+    # limite con el rojo en su minimo. Medido por barrido sobre reflectancia
+    # de -0.1 a 1.6 (nube brillante), el recorrido real es [-0.90, 1.80];
+    # se deja la cota teorica para no recortar nunca un valor legitimo.
+    # A diferencia de los indices normalizados, el denominador de EVI2
+    # --NIR + 2.4*rojo + 1-- no puede acercarse a cero: con el suelo del
+    # desplazamiento BOA (-0.1) su minimo es 0.66, asi que la patologia que
+    # motivo _acotar_indice no se da aqui.
+    'EVI2': (-1.0, 2.5),
     'NDMI': (-1.0, 1.0),
     'NBR':  (-1.0, 1.0),
     'NDRE': (-1.0, 1.0),
@@ -605,7 +679,7 @@ def _codigo_meses(meses):
     """Código compacto de una lista de meses para el nombre de archivo.
 
     Contiguo -> '12-04' (admite el salto de diciembre a enero, que es el
-    caso normal de la estación seca en el Pacífico norte).
+    caso de cualquier estación seca que cruce el fin de año).
     No contiguo -> '01.03.07'.
     """
     unicos = sorted(set(int(m) for m in meses if 1 <= int(m) <= 12))

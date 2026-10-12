@@ -8,7 +8,7 @@ about=[ENGLISH SUMMARY]
     Processing algorithms: (1) search and download Sentinel-2 and Landsat from
     public STAC catalogues, reading data as COG over /vsicurl/, with cloud cover
     measured INSIDE the area of interest rather than over the 110 km tile, eight
-    RGB band combinations, ten spectral indices and a dry-minus-wet seasonal
+    RGB band combinations, eleven spectral indices and a dry-minus-wet seasonal
     amplitude; (2) Esri World Imagery, current and historical (Wayback archive);
     (3) Sentinel-1 RTC radar through ASF HyP3, with per-track inventory, explicit
     credit confirmation and seasonal backscatter amplitude; (4) export any layer
@@ -25,15 +25,15 @@ about=[ENGLISH SUMMARY]
 
     [RESUMEN EN ESPANOL]
     Cuatro algoritmos de Processing. El primero consulta catalogos STAC publicos (Element84 Earth Search, Microsoft Planetary Computer) y trabaja los datos por COG sobre /vsicurl/, sin descargas innecesarias.
-    Funciones principales: capa vectorial de huellas con metadatos e hoja de contactos HTML para revisar escenas antes de descargar; nubosidad medida DENTRO del AOI con SCL (Sentinel-2) o QA_PIXEL (Landsat), no la del mosaico de 110 km; carga de recursos remotos por /vsicurl/ o descarga de recortes GeoTIFF comprimidos; ocho composiciones RGB; diez indices espectrales (NDVI, SAVI, NDMI, NBR, MSI, NDRE, CIre y Tasseled Cap brillo/verdor/humedad con coeficientes por sensor); amplitud fenologica estacional por mediana con recuento de observaciones por pixel; y simbologia comparable entre fechas (media +- N sigma, limites fijos, paletas divergentes ancladas en cero).
+    Funciones principales: capa vectorial de huellas con metadatos e hoja de contactos HTML para revisar escenas antes de descargar; nubosidad medida DENTRO del AOI con SCL (Sentinel-2) o QA_PIXEL (Landsat), no la del mosaico de 110 km; carga de recursos remotos por /vsicurl/ o descarga de recortes GeoTIFF comprimidos; ocho composiciones RGB; once indices espectrales (NDVI, SAVI, EVI2, NDMI, NBR, MSI, NDRE, CIre y Tasseled Cap brillo/verdor/humedad con coeficientes por sensor); amplitud fenologica estacional por mediana con recuento de observaciones por pixel; y simbologia comparable entre fechas (media +- N sigma, limites fijos, paletas divergentes ancladas en cero).
     Los calculos se hacen sobre reflectancia leyendo escala y desplazamiento de raster:bands, incluido el desplazamiento BOA de la linea base 04.00 de Sentinel-2 y el termino aditivo de Landsat Collection 2, que no se cancelan en un cociente.
     Sin credenciales para Earth Search. Planetary Computer usa un token SAS anonimo gratuito que el complemento solicita y renueva por si mismo.
     El segundo algoritmo trae imagenes Esri World Imagery, actuales e historicas (archivo Wayback desde 2014), recortadas al AOI: alta resolucion para fotointerpretar arboles aislados, que a 10-20 m son subpixel. Detecta que versiones del archivo cambian realmente sobre el area y da la fecha de captura real de cada una, no la de publicacion del mosaico.
-    El tercero trabaja Sentinel-1 RTC a traves de ASF HyP3, en tres modos: inventario por traza sin consumir creditos, pedido de trabajos RTC con confirmacion explicita de gasto, y colecta de datos con amplitud estacional de retrodispersion. La colecta escribe la amplitud, las DOS medianas por estacion --sin ellas no se sabe sobre que nivel se mide la diferencia--, el recuento de observaciones por pixel y un informe HTML de auditoria autocontenido, y puede reproyectar los productos finales al SRC que se indique, por ejemplo CRTM05. El radar no pierde datos por nube, que es justo la debilidad de la mediana de estacion lluviosa en el camino optico; en cambio responde a la humedad del suelo, asi que es un indicador confundido de otra manera y vale como contraste, no como sustituto. No se mezclan trazas: cada orbita relativa observa con otro angulo de incidencia, de modo que la traza va en el nombre del archivo.
+    El tercero trabaja Sentinel-1 RTC a traves de ASF HyP3, en tres modos: inventario por traza sin consumir creditos, pedido de trabajos RTC con confirmacion explicita de gasto, y colecta de datos con amplitud estacional de retrodispersion. La colecta escribe la amplitud, las DOS medianas por estacion --sin ellas no se sabe sobre que nivel se mide la diferencia--, el recuento de observaciones por pixel y un informe HTML de auditoria autocontenido, y puede reproyectar los productos finales al SRC que se indique. El radar no pierde datos por nube, que es justo la debilidad de la mediana de estacion lluviosa en el camino optico; en cambio responde a la humedad del suelo, asi que es un indicador confundido de otra manera y vale como contraste, no como sustituto. No se mezclan trazas: cada orbita relativa observa con otro angulo de incidencia, de modo que la traza va en el nombre del archivo.
     El cuarto exporta la capa elegida a KMZ y la abre en Google Earth. Un raster se RENDERIZA antes con la simbologia que se ve en QGIS, porque KML no guarda valores sino imagenes pegadas al terreno: volcar un GeoTIFF de NDVI sin renderizar daria una imagen gris ilegible. Lo vectorial va por LIBKML y conserva los atributos; indicando un campo de fecha, cada entidad sale con su TimeStamp y Google Earth muestra el control deslizante de tiempo, util para recorrer una serie de huellas en vez de verlas encimadas. El KMZ lo leen todas las versiones de Google Earth, pero abrirlo solo se puede automatizar en la de escritorio: Earth Web y las apps moviles no permiten que otra aplicacion les entregue un archivo, de modo que para esas el algoritmo deja el archivo y dice como importarlo.
     Numeros: punto para los decimales y espacio para los millares, nunca coma, de modo que las cifras del registro se pegan sin retoques en un campo de extension o de SRC de QGIS, en la consola de Python o en una hoja de calculo. El parametro «Limites fijos min,max» parte su entrada por la coma, asi que ahi una coma decimal se leeria como otro rango sin dar error.
     Datos: Copernicus Sentinel-1 y Sentinel-2 (ESA) y Landsat Collection 2 (USGS/NASA), de acceso abierto; productos RTC generados por ASF DAAC HyP3 con software GAMMA, que requiere una cuenta gratuita de Earthdata Login. Las imagenes de Esri NO son dato abierto: se rigen por el Esri Master License Agreement.
-version=1.5.0
+version=1.6.0
 author=Jorge Fallas
 email=jfallas56@gmail.com
 tracker=https://github.com/jfallas56-CR/BuscadorSTAC/issues
@@ -46,7 +46,60 @@ hasProcessingProvider=yes
 experimental=False
 deprecated=False
 server=False
-changelog=1.5.0 (2026-10-12) Una sola convencion numerica, y declarada.
+changelog=1.6.0 (2026-10-12) EVI2, y el texto deja de ser de Costa Rica.
+    EVI2 --Jiang, Huete, Didan y Miura (2008), Remote Sensing of Environment
+    112(10) 3833-3845, ec. 15-- se suma a la lista, que pasa a once indices:
+      EVI2 = 2.5 * (NIR - rojo) / (NIR + 2.4*rojo + 1)
+    Atiende el extremo que el NDVI no cubre. El NDVI se SATURA en cubierta
+    densa: pasado cierto punto, mas biomasa ya no lo sube y un rodal cerrado
+    joven y uno maduro dan casi el mismo valor. Subiendo el NIR de 0.30 a
+    0.70 con el rojo fijo, el NDVI recorre 0.10 y el EVI2 0.45, y la
+    ganancia por paso del NDVI cae al 31 %% de la del primer paso mientras
+    la del EVI2 se queda en el 68 %%. Es el complemento del SAVI, no su
+    repeticion: el SAVI corrige el lado del suelo descubierto, el EVI2 el de
+    la cubierta cerrada.
+    Es el UNICO indice de la lista con coeficientes calibrados, asi que
+    lleva su procedencia en la ayuda, como el RVI dual-pol del radar. El 2.4
+    sale de 6 - 7.5/c con c = 2.08, la razon rojo/azul que los autores
+    encuentran optima: esa es la suposicion en la que se apoya y el limite
+    de la medida. Citelo como «EVI2», no como «EVI».
+    Se elige la version de DOS bandas sobre el EVI de tres por dos razones,
+    y la segunda es de este codigo: en el EVI el azul entra con coeficiente
+    7.5 --el mayor de la formula-- siendo la banda mas ruidosa, y aqui la
+    reflectancia negativa NO se trunca, de modo que con el azul negativo el
+    termino -7.5*azul se vuelve una suma positiva grande y el EVI de tres
+    bandas colapsa hacia cero sobre agua, sombra profunda y cicatrices de
+    quema, sin dar error. El denominador del EVI2 no tiene ese problema: con
+    el suelo del desplazamiento BOA (-0.1) su minimo es 0.66.
+    Su recorrido no es [-1, 1] y se acota a [-1, 2.5], que es su ganancia;
+    barrido sobre reflectancia de -0.1 a 1.6 el recorrido real es
+    [-0.90, 1.80]. La amplitud estacional corre sobre los indices que
+    marque, asi que AMPL_EVI2 sale sin pedir nada mas -- y ahi importa
+    doble, porque un indice saturado tiene recorrido comprimido y la
+    diferencia seca-lluviosa sale mas pequena de lo que deberia justo en la
+    cubierta densa.
+    La formula vive en core.py, no junto a las otras siete: es la unica con
+    coeficientes calibrados y alli se prueba sin QGIS contra los valores
+    publicados. Seis pruebas, incluida una que exige el comportamiento
+    --que conserve mas respuesta que el NDVI al subir el NIR-- y no solo la
+    aritmetica.
+    TEXTO: el complemento deja de presentarse como herramienta de Costa
+    Rica. «Flujo recomendado en Costa Rica (nubosidad alta)» pasa a «Flujo
+    recomendado con nubosidad alta»: el procedimiento sirve con nubosidad
+    alta en cualquier parte. La ayuda de los meses de estacion ya no dice
+    «el regimen del Pacifico Norte de Costa Rica» sino que el valor por
+    omision --diciembre a abril-- es un regimen frecuente en el tropico y
+    que la estacion seca cambia con la region. Igual con los ejemplos de
+    SRC: el UTM de la escena ya no se ilustra con las zonas de Costa Rica y
+    el SRC de salida recomienda «el nacional o regional con el que trabaje
+    el resto del proyecto» en vez de uno concreto.
+    Lo que SI se queda es decir cual es el valor por omision --la extension
+    inicial ES Costa Rica continental--, porque sin eso el aviso de memoria
+    no se puede relacionar con lo que el usuario ve en el dialogo. Esta
+    reformulado para que se lea «es el valor con el que viene» y no «esto es
+    de Costa Rica».
+
+    1.5.0 (2026-10-12) Una sola convencion numerica, y declarada.
     Punto (.) para los decimales y espacio para los millares --«1 234.56»--,
     nunca una coma, en ningun papel. La convencion se declara ahora en los
     cuatro paneles de ayuda, en «about» y en los dos README, porque una cifra

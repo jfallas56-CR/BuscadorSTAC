@@ -51,10 +51,14 @@ El token se escribe en el parámetro correspondiente y NO se guarda en
 ninguna parte: ni en el proyecto, ni en el manifiesto, ni en el registro.
 
 Autor  : Jorge Fallas (jfallas56@gmail.com)
-Versión: 1.5.0
+Versión: 1.6.0
 Licencia: GPL v2 o posterior
 
 Historial:
+    1.6.0 (2026-10-12): EVI2 (Jiang et al. 2008), vigor que no se satura
+        en cubierta densa. Y el texto deja de presentar el complemento
+        como herramienta de Costa Rica: el flujo con nubosidad alta y los
+        meses de estacion valen para cualquier region.
     1.5.0 (2026-10-12): Una sola convención numérica, declarada en la
         ayuda: espacio de millar, PUNTO decimal, coma en ningún papel.
         El punto porque estas cifras se copian a campos de QGIS, a la
@@ -694,7 +698,7 @@ class Sentinel1Hyp3Algorithm(QgsProcessingAlgorithm):
     CARPETA = 'CARPETA'
     SALIDA = 'SALIDA'
 
-    VERSION = 'v1.5.0'
+    VERSION = 'v1.6.0'
 
     def __init__(self):
         super().__init__()
@@ -806,8 +810,8 @@ entraron en cada estación y qué salió. Autocontenido, sin recursos remotos:
 se abre dentro de años y sin red.</li>
 </ul>
 
-<p>Todo sale en el SRC nativo del producto —el UTM de la escena, EPSG:32616 o
-32617 en Costa Rica— salvo que indique otro en «SRC de salida»: entonces los
+<p>Todo sale en el SRC nativo del producto —el UTM de la escena— salvo que
+indique otro en «SRC de salida»: entonces los
 productos finales se reproyectan al terminar, por vecino más próximo para
 conservar los valores medidos.</p>
 
@@ -1028,8 +1032,11 @@ cualquier producto derivado.</p>
             self.MESES_SECA, self.tr('Meses de estación seca'),
             defaultValue='12,1,2,3,4', optional=True)
         p.setHelp(self.tr(
-            'Números de mes separados por coma. El valor por omisión es el '
-            'régimen del Pacífico Norte de Costa Rica.'))
+            'Números de mes separados por coma. El valor por omisión '
+            '—diciembre a abril— es un régimen estacional frecuente en el '
+            'trópico, pero la estación seca cambia con la región: ponga los '
+            'meses que correspondan a la suya. La lista admite el salto de '
+            'fin de año.'))
         self.addParameter(p)
 
         p = QgsProcessingParameterString(
@@ -1045,14 +1052,15 @@ cualquier producto derivado.</p>
             self.tr('SRC de salida (vacío = el nativo del producto)'),
             optional=True)
         p.setHelp(self.tr(
-            'Los productos de HyP3 vienen en el UTM de la escena —en Costa '
-            'Rica, EPSG:32616 o 32617— y los recortes lo conservan, porque '
+            'Los productos de HyP3 vienen en el UTM de la escena y los '
+            'recortes lo conservan, porque '
             'reproyectar la retrodispersión antes de calcular la mediana '
             'la resamplearía sin necesidad.<br><br>'
             'Indique aquí un SRC solo si quiere los PRODUCTOS FINALES en '
             'otro: la amplitud, las medianas y el recuento se reproyectan '
-            'al terminar, cuando el cálculo ya está hecho. Para Costa Rica '
-            'lo habitual es CRTM05 (EPSG:8908).<br><br>'
+            'al terminar, cuando el cálculo ya está hecho. Lo habitual es el '
+            'SRC nacional o regional con el que trabaje el resto del '
+            'proyecto.<br><br>'
             'Se remuestrea por vecino más próximo, a propósito: conserva '
             'exactamente los valores medidos en vez de inventar promedios '
             'entre píxeles. El coste es geométrico, hasta medio píxel.'))

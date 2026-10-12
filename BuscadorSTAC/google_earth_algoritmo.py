@@ -41,9 +41,13 @@ LO QUE NO HACE
 
 Autor    : Jorge Fallas (jfallas56@gmail.com)
 Licencia : GPL v2 o posterior
-Versión  : 1.5.0
+Versión  : 1.6.0
 
 Historial:
+    1.6.0 (2026-10-12): EVI2 (Jiang et al. 2008), vigor que no se satura
+        en cubierta densa. Y el texto deja de presentar el complemento
+        como herramienta de Costa Rica: el flujo con nubosidad alta y los
+        meses de estacion valen para cualquier region.
     1.5.0 (2026-10-12): Una sola convención numérica, declarada en la
         ayuda: espacio de millar, PUNTO decimal, coma en ningún papel.
         Revierte a propósito la decisión de 1.0.5 que está más abajo.
@@ -129,7 +133,7 @@ FORMATOS_IMAGEN = ['PNG (conserva transparencia)', 'JPEG (menos peso)']
 class ExportarGoogleEarthAlgorithm(QgsProcessingAlgorithm):
     """Capa ráster o vectorial a KMZ, y abrirlo en Google Earth."""
 
-    VERSION = 'v1.5.0'
+    VERSION = 'v1.6.0'
 
     CAPA = 'CAPA'
     CAMPO_FECHA = 'CAMPO_FECHA'

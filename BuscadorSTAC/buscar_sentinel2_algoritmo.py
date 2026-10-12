@@ -27,9 +27,13 @@ No requiere credenciales para Earth Search. Planetary Computer usa un
 token SAS anónimo gratuito que el algoritmo solicita automáticamente.
 
 Autor  : Jorge Fallas (jfallas56@gmail.com)
-Versión: 1.5.0
+Versión: 1.6.0
 
 Historial:
+    1.6.0 (2026-10-12): EVI2 (Jiang et al. 2008), vigor que no se satura
+        en cubierta densa. Y el texto deja de presentar el complemento
+        como herramienta de Costa Rica: el flujo con nubosidad alta y los
+        meses de estacion valen para cualquier region.
     1.5.0 (2026-10-12): Una sola convención numérica, declarada en la
         ayuda: espacio de millar, PUNTO decimal, coma en ningún papel.
         El punto porque estas cifras se copian a campos de QGIS, a la
@@ -108,7 +112,7 @@ from .core import (
     _res_nativa, _salida_volatil, _tamano_salida, _validar_ortonormalidad,
     CLAVES_BANDAS, ETIQUETAS_BANDAS, NOTA_NUMEROS, SIN_EQUIVALENTE_LS,
     alias_banda, bandas_duplicadas, composiciones_vetadas,
-    etiqueta_banda, sufijo_banda)
+    etiqueta_banda, evi2, sufijo_banda)
 
 from osgeo import gdal
 
@@ -579,7 +583,7 @@ SCL_NUBE_ALTA = 9
 SCL_CIRRO = 10
 
 # Clases que invalidan un píxel para análisis. La sombra de nube (3) se incluye
-# deliberadamente: en terreno montañoso costarricense la sombra proyectada suele
+# deliberadamente: en terreno montañoso la sombra proyectada suele
 # cubrir más área que la nube misma, y arruina igual cualquier índice espectral.
 SCL_NUBOSAS = (SCL_SOMBRA_NUBE, SCL_NUBE_MEDIA, SCL_NUBE_ALTA, SCL_CIRRO)
 SCL_SIN_DATO = (SCL_NODATA, SCL_SATURADO)
@@ -996,7 +1000,7 @@ def _geom_desde_geojson(gj):
 # --------------------------------------------------------------------------
 class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
 
-    VERSION = 'v1.5.0'
+    VERSION = 'v1.6.0'
 
     # Lógica pura, definida en core.py y reenganchada aquí como
     # staticmethod. Así cada sitio de llamada sigue siendo
@@ -1138,7 +1142,7 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             "• <i>Descargar recorte</i>: escribe un GeoTIFF comprimido por banda "
             "y escena, recortado al AOI.<br><br>"
             "<b>Sensores:</b> Sentinel-2 L2A (10-20 m, desde 2017) y Landsat Collection 2 Nivel 2 (30 m, desde 1982). Las claves de banda son comunes a ambos, pero no apuntan a la misma banda ni a la misma resolución: cada rótulo lo dice. Las ocho composiciones RGB funcionan en los dos sensores; Landsat no tiene borde rojo ni recurso TCI, así que la vista previa se compone desde R/G/B y los índices NDRE y CIre quedan vetados. La nubosidad dentro del AOI se mide con SCL en Sentinel-2 y con los bits de QA_PIXEL en Landsat. Los recortes se nombran con el número real del sensor: «_B04» en Sentinel-2 y «_RED» en Landsat, donde el número cambia entre L4/5/7 y L8-9 y poner uno solo sería falso.<br><br>"  # noqa: E501
-            "<b>Flujo recomendado en Costa Rica (nubosidad alta):</b><br>"
+            "<b>Flujo recomendado con nubosidad alta:</b><br>"
             "1. Ejecute en modo <i>Solo catálogo</i> con miniaturas activadas "
             "y nubosidad de escena permisiva (50-70 %). Marque «Capa de "
             "huellas» y <b>dele un archivo GeoPackage</b>, no una capa "
@@ -1173,8 +1177,8 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             "único GeoTIFF de 3 bandas por escena.<br><br>"
             "<b>Notas:</b><br>"
             "• La extensión se reproyecta a EPSG:4326 para la consulta STAC; "
-            "los recortes conservan el SRC nativo de la escena (UTM 16N/17N en "
-            "Costa Rica).<br>"
+            "los recortes conservan el SRC nativo de la escena (la zona UTM que "
+            "le corresponda).<br>"
             "• La capa de AOI (opcional) se usa como <i>línea de corte</i> y tiene "
             "prioridad sobre la extensión.<br>"
             "• Earth Search no requiere credenciales. Planetary Computer solicita "
@@ -1186,14 +1190,16 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             "por bloques. Antes de descargar nada, el algoritmo estima cuánta "
             "memoria haría falta y rechaza la ejecución si pasa de "
             f"{MEMORIA_MAX_GIB:.0f} GiB, con el tamaño en píxeles en el "
-            "mensaje. Tenga presente que <b>la extensión por omisión abarca "
-            "todo Costa Rica</b>: ejecutarla sin tocar, con índices y "
+            "mensaje. Tenga presente que <b>la extensión por omisión abarca un "
+            "país entero</b> —Costa Rica, que es el valor con el que viene—: "
+            "ejecutarla sin tocar, con índices y "
             "amplitud, pediría unos 40 GiB. Indique una capa de AOI o encuadre "
             "la extensión en el lienzo. Un lote de 150 ha ocupa menos de 2 MB; "
             "un cuadrado de 100 km cabe de sobra.<br><br>"
             "<b>Control de calidad de los índices.</b> Cada índice se recorta "
             "a su rango físico (NDVI, NDMI, NBR y NDRE entre −1 y 1; MSI "
-            "entre 0 y 10) y los píxeles fuera de rango salen como NaN con un "
+            "entre 0 y 10; EVI2 entre −1 y 2.5, que es su ganancia) y los "
+            "píxeles fuera de rango salen como NaN con un "
             "aviso que dice cuántos fueron. Un porcentaje alto indica bandas "
             "corruptas o un escalado mal declarado en el catálogo, no un "
             "resultado a interpretar.<br><br>"
@@ -1220,7 +1226,8 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             defaultValue='-86.0,-82.5,8.0,11.3 [EPSG:4326]'
         )
         p.setHelp(self.tr(
-            'Valor por defecto: Costa Rica continental — sirve para explorar '
+            'Valor por defecto: Costa Rica continental, porque alguno hay que '
+            'traer. Sirve para explorar '
             'el catálogo, pero es demasiado grande para calcular índices: el '
             'algoritmo rechazaría la ejecución por memoria. Para trabajar, '
             'encuadre en el lienzo y use «Usar extensión del lienzo del mapa», '
@@ -1551,8 +1558,8 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
 
         p = QgsProcessingParameterEnum(
             self.INDICES,
-            self.tr('Índices espectrales — NDVI, NDMI, NBR, Tasseled Cap '
-                    '(solo modo descarga)'),
+            self.tr('Índices espectrales — NDVI, EVI2, NDMI, NBR, Tasseled '
+                    'Cap (solo modo descarga)'),
             options=[i[0] for i in INDICES_ESPECTRALES],
             allowMultiple=True, defaultValue=[], optional=True)
         p.setHelp(self.tr(
@@ -1564,6 +1571,16 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             'corrige el suelo que se ve entre plantas, útil con cobertura '
             'parcial. NDVI <b>satura</b> donde la vegetación es densa, así que '
             'distingue mal entre coberturas vegetales cerradas.<br>'
+            '• <b>EVI2</b> — el mismo vigor que el NDVI, pero <b>sin '
+            'saturarse</b> en cubierta densa, que es justo donde el NDVI deja '
+            'de informar: pasado cierto punto, más biomasa ya no sube el '
+            'NDVI y un rodal cerrado joven y uno maduro dan casi el mismo '
+            'valor. El EVI2 sigue respondiendo, de modo que atiende el '
+            'extremo opuesto al del SAVI: éste corrige el lado del suelo '
+            'descubierto, aquél el de la cubierta cerrada. Úselo cuando la '
+            'clase que quiere separar esté en el rango alto del NDVI. '
+            'Su recorrido no es [−1, 1]: sobre vegetación va de 0 a '
+            'aproximadamente 0.9.<br>'
             '• <b>NDMI</b>, <b>NBR</b> y <b>MSI</b> — agua en la cubierta, por '
             'el SWIR. No saturan donde el NDVI sí, y separan coberturas que se '
             'ven igual de verdes pero retienen agua de forma distinta: ahí '
@@ -1595,7 +1612,19 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             'El cálculo se hace sobre reflectancia, no sobre DN: se aplica el '
             'escalado del sensor, incluido el desplazamiento BOA de la línea '
             'base 04.00 de Sentinel-2 y el desplazamiento aditivo de Landsat '
-            'Collection 2, que no se cancelan en un cociente.'))
+            'Collection 2, que no se cancelan en un cociente.<br><br>'
+            '<b>Procedencia del EVI2.</b> Es el único de la lista con '
+            'coeficientes calibrados, así que conviene saber de dónde salen: '
+            'Jiang et al. (2008), <i>Remote Sensing of Environment</i> '
+            '112(10) 3833–3845. Es la versión de dos bandas del EVI de tres, '
+            'y su coeficiente 2.4 <b>supone una razón rojo/azul de 2.08</b>: '
+            'ésa es la suposición en la que se apoya y el límite de la '
+            'medida. Se prefiere al EVI de tres bandas porque el azul entra '
+            'en aquél con coeficiente 7.5 —el mayor de la fórmula— siendo la '
+            'banda más ruidosa, y porque aquí la reflectancia negativa no se '
+            'trunca: con el azul negativo, el EVI de tres bandas colapsa '
+            'hacia cero sobre agua y sombra profunda sin dar error. '
+            'Cítelo como «EVI2», no como «EVI».'))
         self.addParameter(p)
 
         p = QgsProcessingParameterBoolean(
@@ -1663,15 +1692,18 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             defaultValue='12,1,2,3,4')
         p.setHelp(self.tr(
             'Números de mes separados por comas. El valor por omisión '
-            'corresponde al Pacífico norte de Costa Rica.'))
+            '—diciembre a abril— es un régimen estacional frecuente en el '
+            'trópico, pero la estación seca cambia con la región: ponga los '
+            'meses que correspondan a la suya. La lista admite el salto de '
+            'fin de año.'))
         self.addParameter(p)
 
         p = QgsProcessingParameterString(
             self.MESES_LLUVIA, self.tr('Meses de estación lluviosa'),
             defaultValue='5,6,7,8,9,10,11')
         p.setHelp(self.tr(
-            'Números de mes separados por comas. El valor por omisión '
-            'corresponde al Pacífico norte de Costa Rica.<br><br>'
+            'Números de mes separados por comas. Debe ser el complemento de la '
+            'lista anterior para su región.<br><br>'
             'Ningún mes puede figurar también en la estación seca: la '
             'amplitud sería una diferencia contra sí misma y el algoritmo lo '
             'rechaza antes de descargar. Un mes que no aparezca en ninguna de '
@@ -2093,7 +2125,7 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
         if ext.isEmpty():
             return False, (
                 "[!] Extensión vacía. Defina un rectángulo de búsqueda o use "
-                "el valor por defecto de Costa Rica."
+                "el valor con el que viene el parámetro."
             )
 
         # Tope de memoria. El cálculo lee bandas completas con ReadAsArray y
@@ -2137,7 +2169,7 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
                     f"carga las bandas completas en memoria, así que QGIS se "
                     f"cerraría sin aviso. Reduzca «Extensión de búsqueda» o "
                     f"indique una «Capa de AOI para recorte»; recuerde que la "
-                    f"extensión por omisión abarca todo Costa Rica."
+                    f"extensión por omisión abarca un país entero."
                 )
 
         return super().checkParameterValues(parameters, context)
@@ -3754,6 +3786,12 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             if sufijo == 'SAVI':
                 nir, red = bandas
                 return 1.5 * (nir - red) / (nir + red + 0.5)
+            if sufijo == 'EVI2':
+                # La unica formula que vive en core: es la unica con
+                # coeficientes calibrados, y alli se puede probar sin QGIS
+                # contra los valores publicados.
+                nir, red = bandas
+                return evi2(nir, red)
             if sufijo == 'NDMI':
                 nir, swir1 = bandas
                 return (nir - swir1) / (nir + swir1)

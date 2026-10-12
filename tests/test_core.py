@@ -1423,3 +1423,91 @@ def test_la_lista_de_disponibles_no_se_escribe_a_mano():
 def test_composiciones_vacias_no_estallan():
     assert core.composiciones_vetadas(None) == ([], [])
     assert core.composiciones_vetadas([]) == ([], [])
+
+
+# --------------------------------------------------------------------------
+# EVI2: el unico indice con coeficientes calibrados
+# --------------------------------------------------------------------------
+def test_evi2_usa_los_coeficientes_publicados():
+    """Jiang et al. (2008), ec. 15: G=2.5, C=2.4, L=1.
+
+    Con nombre y probados porque son valores CALIBRADOS: un numero
+    calibrado suelto en una expresion no se puede comprobar contra su
+    fuente. El 2.4 sale de 6 - 7.5/c con c = 2.08, la razon rojo/azul
+    optima que los autores encuentran -- esa es la suposicion en la que
+    el indice se apoya.
+    """
+    assert core.EVI2_G == 2.5
+    assert core.EVI2_L == 1.0
+    assert abs(core.EVI2_C - (6.0 - 7.5 / 2.08)) < 0.01, (
+        'el 2.4 debe seguir siendo 6 - 7.5/2.08')
+
+
+def test_evi2_calcula_la_formula():
+    for nir, rojo in ((0.40, 0.03), (0.28, 0.07), (0.01, 0.03), (0.0, 0.0)):
+        esperado = 2.5 * (nir - rojo) / (nir + 2.4 * rojo + 1.0)
+        assert abs(core.evi2(nir, rojo) - esperado) < 1e-12, (nir, rojo)
+    # Y sobre arreglos, que es como lo llama el algoritmo.
+    a = core.evi2(np.array([0.40, 0.28]), np.array([0.03, 0.07]))
+    assert a.shape == (2,)
+    assert np.all(np.isfinite(a))
+
+
+def test_evi2_no_se_satura_donde_el_ndvi_si():
+    """La razon de ser del indice, como comportamiento y no como prosa.
+
+    Subiendo el NIR con el rojo fijo --mas biomasa sobre cubierta ya
+    cerrada-- el NDVI gana cada vez menos por paso y el EVI2 conserva
+    mas recorrido. Se compara el incremento del ultimo tramo contra el
+    del primero: lo que mide la saturacion es como DECAE la respuesta.
+    """
+    rojo = 0.03
+    nirs = np.array([0.30, 0.40, 0.50, 0.60, 0.70])
+    ndvi = (nirs - rojo) / (nirs + rojo)
+    ev2 = core.evi2(nirs, rojo)
+
+    caida_ndvi = np.diff(ndvi)[-1] / np.diff(ndvi)[0]
+    caida_evi2 = np.diff(ev2)[-1] / np.diff(ev2)[0]
+    assert caida_evi2 > caida_ndvi, (
+        f'el EVI2 deberia conservar mas respuesta: NDVI {caida_ndvi:.3f} '
+        f'vs EVI2 {caida_evi2:.3f}')
+
+
+def test_evi2_tiene_el_denominador_lejos_de_cero():
+    """Lo que lo hace preferible al EVI de tres bandas en ESTE codigo.
+
+    El complemento no trunca la reflectancia negativa --el desplazamiento
+    BOA de la linea base 04.00 es de -0.1 y se aplica a proposito--. Con
+    ese suelo, el denominador del EVI2 no baja de 0.66, de modo que la
+    patologia que motivo _acotar_indice no puede darse.
+    """
+    r = np.linspace(-0.1, 1.6, 400)
+    nir, rojo = np.meshgrid(r, r, indexing='ij')
+    den = nir + core.EVI2_C * rojo + core.EVI2_L
+    assert den.min() > 0.6, den.min()
+    assert np.all(np.isfinite(core.evi2(nir, rojo)))
+
+
+def test_evi2_esta_en_la_tabla_y_tiene_cota():
+    filas = {e[1]: e for e in core.INDICES_ESPECTRALES}
+    assert 'EVI2' in filas, 'el indice no esta ofrecido en la interfaz'
+    _, _, bandas, solo_s2 = filas['EVI2']
+    assert bandas == ('nir', 'red'), bandas
+    assert not solo_s2, 'EVI2 no necesita borde rojo: sirve en los dos'
+    assert 'EVI2' in core.LIMITES_INDICE, (
+        'sin cota, un valor absurdo entraria en la mediana estacional')
+    lo, hi = core.LIMITES_INDICE['EVI2']
+    assert hi == core.EVI2_G, 'la cota superior es la ganancia del indice'
+    # La cota tiene que cubrir el recorrido real sobre reflectancia fisica.
+    r = np.linspace(-0.1, 1.6, 400)
+    nir, rojo = np.meshgrid(r, r, indexing='ij')
+    v = core.evi2(nir, rojo)
+    assert lo <= v.min() and v.max() <= hi, (v.min(), v.max())
+
+
+def test_evi2_no_se_acota_con_el_rango_del_ndvi():
+    """Un EVI2 de 1.4 es posible; con el rango del NDVI saldria NaN."""
+    fb = Feedback()
+    out = core._acotar_indice('EVI2', np.array([0.63, 1.40, 2.60]), fb)
+    assert np.isfinite(out[0]) and np.isfinite(out[1])
+    assert np.isnan(out[2]), 'por encima de la ganancia no es una medida'
