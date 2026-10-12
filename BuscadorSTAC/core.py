@@ -25,7 +25,7 @@ cambió ni una línea de ellos.
 
 Autor    : Jorge Fallas (jfallas56@gmail.com)
 Licencia : GPL v2 o posterior
-Versión  : 1.3.2
+Versión  : 1.3.3
 """
 
 import datetime
@@ -94,7 +94,7 @@ INDICES_ESPECTRALES = [
      ('nir', 'red'), False),
     ("SAVI — NDVI ajustado por suelo descubierto (L=0,5)", "SAVI",
      ('nir', 'red'), False),
-    ("NDMI — humedad del dosel (NIR, SWIR1)", "NDMI",
+    ("NDMI — humedad de la cubierta (NIR, SWIR1)", "NDMI",
      ('nir08', 'swir16'), False),
     ("NBR — estructura y quema (NIR, SWIR2)", "NBR",
      ('nir08', 'swir22'), False),
@@ -115,7 +115,7 @@ INDICES_ESPECTRALES = [
      TC_ORDEN_BANDAS, False),
     ("Tasseled Cap — Verdor (densidad de la vegetación)", "TCG",
      TC_ORDEN_BANDAS, False),
-    ("Tasseled Cap — Humedad (agua en dosel y suelo, sombra)", "TCW",
+    ("Tasseled Cap — Humedad (agua en la cubierta y el suelo, sombra)", "TCW",
      TC_ORDEN_BANDAS, False),
 ]
 

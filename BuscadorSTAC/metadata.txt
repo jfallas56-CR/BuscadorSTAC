@@ -11,7 +11,7 @@ about=Cuatro algoritmos de Processing. El primero consulta catalogos STAC public
     El tercero trabaja Sentinel-1 RTC a traves de ASF HyP3, en tres modos: inventario por traza sin consumir creditos, pedido de trabajos RTC con confirmacion explicita de gasto, y colecta de datos con amplitud estacional de retrodispersion. La colecta escribe la amplitud, las DOS medianas por estacion --sin ellas no se sabe sobre que nivel se mide la diferencia--, el recuento de observaciones por pixel y un informe HTML de auditoria autocontenido, y puede reproyectar los productos finales al SRC que se indique, por ejemplo CRTM05. El radar no pierde datos por nube, que es justo la debilidad de la mediana de estacion lluviosa en el camino optico; en cambio responde a la humedad del suelo, asi que es un indicador confundido de otra manera y vale como contraste, no como sustituto. No se mezclan trazas: cada orbita relativa observa con otro angulo de incidencia, de modo que la traza va en el nombre del archivo.
     El cuarto exporta la capa elegida a KMZ y la abre en Google Earth. Un raster se RENDERIZA antes con la simbologia que se ve en QGIS, porque KML no guarda valores sino imagenes pegadas al terreno: volcar un GeoTIFF de NDVI sin renderizar daria una imagen gris ilegible. Lo vectorial va por LIBKML y conserva los atributos; indicando un campo de fecha, cada entidad sale con su TimeStamp y Google Earth muestra el control deslizante de tiempo, util para recorrer una serie de huellas en vez de verlas encimadas. El KMZ lo leen todas las versiones de Google Earth, pero abrirlo solo se puede automatizar en la de escritorio: Earth Web y las apps moviles no permiten que otra aplicacion les entregue un archivo, de modo que para esas el algoritmo deja el archivo y dice como importarlo.
     Datos: Copernicus Sentinel-1 y Sentinel-2 (ESA) y Landsat Collection 2 (USGS/NASA), de acceso abierto; productos RTC generados por ASF DAAC HyP3 con software GAMMA, que requiere una cuenta gratuita de Earthdata Login. Las imagenes de Esri NO son dato abierto: se rigen por el Esri Master License Agreement.
-version=1.3.2
+version=1.3.3
 author=Jorge Fallas
 email=jfallas56@gmail.com
 tracker=https://github.com/jfallas56-CR/BuscadorSTAC/issues
@@ -24,7 +24,33 @@ hasProcessingProvider=yes
 experimental=False
 deprecated=False
 server=False
-changelog=1.3.2 (2026-10-12) El RVI dual-pol, con su procedencia.
+changelog=1.3.3 (2026-10-12) El objetivo es cobertura y uso, no solo dosel.
+    Revision completa de terminologia. El texto estaba escrito como si
+    separar vegetacion lenosa de herbacea FUERA el objetivo del
+    complemento, cuando es una aplicacion entre varias: cultivos,
+    humedales, suelo descubierto, zonas construidas o cambio de uso se
+    atienden con las mismas herramientas.
+    Tres clases de cambio:
+    - Enunciados de proposito: los dos README decian «pensado para
+      separar dosel lenoso» y «para inventario forestal y agronomico».
+      Ahora dicen estudios de cobertura y uso de la tierra, con la
+      separacion lenosa/herbacea citada como ejemplo exigente.
+    - Enunciados de medida: decian que un valor ES una clase. Ahora
+      nombran la cantidad fisica --amplitud del ciclo estacional, agua
+      en la cubierta, perdida de volumen dispersor-- y la lectura por
+      cobertura queda como ejemplo, con la advertencia de calibrar con
+      verdad de campo. «NDMI — humedad del dosel» pasa a «humedad de la
+      cubierta»: sobre suelo desnudo el NDMI mide humedad del suelo, no
+      de un dosel que no existe.
+    - Ejemplos de escala: «arboles aislados en potrero» pasa a
+      «elementos menores que el pixel», con el arbol como uno de varios
+      casos junto a un seto, una vivienda o una parcela estrecha.
+    La ayuda de «Indices espectrales» se reescribe por completo: antes
+    recomendaba indices para un solo problema; ahora explica que separa
+    cada familia --verdor, agua de la cubierta, clorofila, Tasseled
+    Cap-- y deja el caso lenosa/herbacea como ejemplo final.
+    
+    1.3.2 (2026-10-12) El RVI dual-pol, con su procedencia.
     El complemento documentaba de donde salia cada conjunto de
     coeficientes de Tasseled Cap --autor, ano y tipo de reflectancia-- y
     del RVI no decia nada, siendo tambien un indice publicado con una

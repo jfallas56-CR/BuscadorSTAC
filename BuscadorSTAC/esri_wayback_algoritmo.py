@@ -66,7 +66,7 @@ Para productos vectoriales derivados destinados a reporte oficial, conviene
 confirmarlo por escrito. El algoritmo muestra este aviso en cada ejecución.
 
 Autor  : Jorge Fallas (jfallas56@gmail.com)
-Versión: 1.3.2
+Versión: 1.3.3
 Licencia: GPL v2 o posterior
 """
 
@@ -279,7 +279,7 @@ def _fecha_epoch(valor):
 class EsriWaybackAlgorithm(QgsProcessingAlgorithm):
     """World Imagery actual e histórico (Wayback) recortado al AOI."""
 
-    VERSION = 'v1.3.2'
+    VERSION = 'v1.3.3'
 
     AOI = 'AOI'
     EXTENSION = 'EXTENSION'
@@ -335,9 +335,10 @@ class EsriWaybackAlgorithm(QgsProcessingAlgorithm):
             "de 8 bits sin radiometría calibrada: no tiene infrarrojo, no se "
             "le pueden calcular NDVI ni NDMI, y dos fechas no se comparan "
             "cuantitativamente. Lo que sí permite es <i>ver</i> e interpretar "
-            "a una resolución que Sentinel-2 no alcanza. Para árboles "
-            "aislados en potrero —subpíxel a 20 m— es la herramienta "
-            "adecuada; para dosel continuo y series densas, use el buscador "
+            "a una resolución que Sentinel-2 no alcanza. Para elementos "
+            "menores que su píxel —un árbol aislado, un seto, una vivienda, "
+            "una parcela estrecha— es la herramienta adecuada; para "
+            "cubiertas continuas y series densas, use el buscador "
             "Sentinel-2 / Landsat de este mismo complemento.<br><br>"
             "<b>Versión publicada ≠ fecha de captura.</b> Es lo más "
             "importante de esta herramienta. «Wayback 2026-08-05» es cuando "
@@ -493,7 +494,8 @@ class EsriWaybackAlgorithm(QgsProcessingAlgorithm):
             defaultValue=1.0, minValue=0.15, maxValue=150.0)
         p.setHelp(self.tr(
             'Determina el nivel de zoom de las teselas. 1 m es un buen punto '
-            'de partida para interpretar copas; 0.3 m aprovecha el máximo '
+            'de partida para fotointerpretación general; 0,3 m aprovecha el '
+            'máximo '
             'detalle donde exista, a costa de descargar dieciséis veces más '
             'teselas. Pedir más detalle del que tiene la imagen original no '
             'añade información, solo la amplía.'))

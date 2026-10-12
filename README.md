@@ -1,6 +1,6 @@
 # BuscadorSTAC
 
-![version](https://img.shields.io/badge/version-1.3.2-blue)
+![version](https://img.shields.io/badge/version-1.3.3-blue)
 ![QGIS](https://img.shields.io/badge/QGIS-3.28%20–%204.x-green)
 ![licencia](https://img.shields.io/badge/licencia-GPL%20v2%2B-blue)
 
@@ -9,10 +9,11 @@ escenas **Sentinel-2** y **Landsat**, trae radar **Sentinel-1 RTC** a través de
 ASF HyP3, recupera el archivo histórico de **Esri World Imagery** y exporta
 cualquier capa a **Google Earth (KMZ)**.
 
-Pensado para trabajo de inventario forestal y agronómico donde la nube es el
+Pensado para estudios de **cobertura y uso de la tierra** donde la nube es el
 problema principal: la nubosidad se mide **dentro del área de interés**, no en
 la tesela de 110 km, y hay un flujo de dos pasos para revisar escenas antes de
-transferir datos.
+transferir datos. Inventario forestal, agronomía, humedales o cambio de uso son
+aplicaciones de lo mismo; el complemento no asume ninguna.
 
 > Los valores por omisión están ajustados a Costa Rica (extensión inicial,
 > marco de estación seca y lluviosa). El complemento funciona en cualquier

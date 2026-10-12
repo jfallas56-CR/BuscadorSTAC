@@ -51,7 +51,7 @@ El token se escribe en el parámetro correspondiente y NO se guarda en
 ninguna parte: ni en el proyecto, ni en el manifiesto, ni en el registro.
 
 Autor  : Jorge Fallas (jfallas56@gmail.com)
-Versión: 1.3.2
+Versión: 1.3.3
 Licencia: GPL v2 o posterior
 
 Historial:
@@ -689,7 +689,7 @@ class Sentinel1Hyp3Algorithm(QgsProcessingAlgorithm):
     CARPETA = 'CARPETA'
     SALIDA = 'SALIDA'
 
-    VERSION = 'v1.3.2'
+    VERSION = 'v1.3.3'
 
     def __init__(self):
         super().__init__()
@@ -744,8 +744,9 @@ estación. El conteo de escenas óptico es bruto; el de radar es neto.</p>
 <p><b>Lo que el radar no resuelve.</b> La retrodispersión en banda C responde
 con fuerza a la <b>humedad del suelo</b>: un potrero desnudo también presenta
 amplitud estacional grande, sin vegetación de por medio. No es un
-discriminante limpio de leñosas, es uno confundido de otra manera. El valor
-está en cruzarlo con la amplitud óptica.</p>
+discriminante limpio de cubierta vegetal, es uno confundido de otra manera. El
+valor está en cruzarlo con la amplitud óptica, que se confunde por motivos
+distintos.</p>
 
 <p><b>Dónde se calcula la amplitud óptica.</b> Aquí no: este algoritmo solo ve
 radar, y no tiene parámetros ópticos —el único filtro es el de moteado, que es
@@ -973,9 +974,11 @@ cualquier producto derivado.</p>
             self.RESOLUCION, self.tr('Espaciamiento de píxel'),
             options=RESOLUCIONES, defaultValue=2)
         p.setHelp(self.tr(
-            'A 10 m una copa aislada de 5–15 m ocupa uno o dos píxeles; a 30 m '
-            'vuelve a ser subpíxel, que es justo la limitación del SWIR que '
-            'motivó buscar radar. El costo en créditos es el que aparece '
+            'El espaciamiento fija qué tamaño de elemento se puede resolver. '
+            'Como referencia, un objeto de 5–15 m —una copa aislada, una '
+            'vivienda, una franja de ribera— ocupa uno o dos píxeles a 10 m '
+            'y vuelve a ser subpíxel a 30 m, que es la misma limitación del '
+            'SWIR óptico. El costo en créditos es el que aparece '
             'entre paréntesis, por escena.'))
         self.addParameter(p)
 
@@ -1009,8 +1012,8 @@ cualquier producto derivado.</p>
             '7x7.<br>'
             'Desactivado por omisión a propósito: la mediana de una docena de '
             'fechas ya promedia el moteado por sí misma, y filtrar antes '
-            'suaviza los bordes de las copas, que es precisamente el detalle '
-            'que se quiere conservar a 10 m. Actívelo si va a interpretar una '
+            'suaviza los bordes entre cubiertas, que es precisamente el '
+            'detalle que se quiere conservar a 10 m. Actívelo si va a interpretar una '
             'fecha suelta.'))
         self.addParameter(p)
 
@@ -2915,13 +2918,17 @@ cualquier producto derivado.</p>
                 f'{100.0 * validos.mean():.1f} %'])
             feedback.pushInfo(
                 "    Signo: seca − lluvia, en POTENCIA. En VH una caída "
-                "grande hacia la seca indica pérdida de volumen dispersor "
-                "—herbáceas que se secan—; valores cercanos a cero indican "
-                "estructura que persiste, es decir leñosas.")
+                "grande hacia la seca indica PÉRDIDA DE VOLUMEN DISPERSOR; "
+                "cerca de cero, estructura que persiste todo el año. Eso es "
+                "lo que mide; qué cobertura hay detrás lo decide su área de "
+                "estudio. Ejemplo típico: herbáceas que se secan dan caída "
+                "grande, y vegetación leñosa, cerca de cero.")
             feedback.pushInfo(
                 "    Cuidado al interpretar: la humedad del suelo mueve esto "
-                "por sí sola, así que un potrero desnudo también da amplitud "
-                "grande. Cruce con la amplitud óptica antes de concluir.")
+                "por sí sola, así que una superficie desnuda —un potrero sin "
+                "pasto, un barbecho, un suelo agrícola— también da amplitud "
+                "grande sin vegetación de por medio. Cruce con la amplitud "
+                "óptica antes de asignar clases.")
         else:
             max_s, max_l = int(n_s.max()), int(n_l.max())
             if max_s == 0 or max_l == 0:

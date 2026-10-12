@@ -1,6 +1,6 @@
 # Buscador STAC: Sentinel, Landsat y Esri Wayback
 
-![version](https://img.shields.io/badge/version-1.3.2-blue)
+![version](https://img.shields.io/badge/version-1.3.3-blue)
 ![QGIS](https://img.shields.io/badge/QGIS-%E2%89%A5%203.28-green)
 ![licencia](https://img.shields.io/badge/licencia-GPL%20v2%2B-orange)
 
@@ -8,9 +8,17 @@ Complemento de QGIS para buscar, previsualizar, descargar y analizar escenas
 **Sentinel-2 L2A** y **Landsat Collection 2 Nivel 2** desde catálogos STAC
 públicos, leyendo los datos como COG sobre `/vsicurl/`.
 
-Pensado para un problema concreto: **separar dosel leñoso de vegetación
-herbácea y arbustiva** en un paisaje estacional, con la nubosidad alta del
-trópico húmedo como condición de trabajo, no como excepción.
+Pensado para estudios de **cobertura y uso de la tierra**: cartografía,
+detección de cambio y caracterización de clases a partir de series temporales,
+con la nubosidad alta del trópico húmedo como condición de trabajo y no como
+excepción.
+
+La separación de vegetación leñosa de herbácea es **una** aplicación, y se usa
+a lo largo de esta documentación como ejemplo porque es la que más exige del
+dato —ambas son verdes, ambas saturan el NDVI, y lo que las distingue es el
+régimen estacional—. Las mismas herramientas sirven para cultivos, humedales,
+suelo descubierto, zonas construidas o cuerpos de agua: lo que cambia es qué
+índice y qué ventana temporal eligen, no el flujo.
 
 Autor: **Jorge Fallas** <jfallas56@gmail.com>
 
@@ -126,9 +134,10 @@ que sugerían longitudes de onda distintas.
   El desajuste se avisa en el registro de cada ejecución, y los coeficientes
   se pueden sustituir con un archivo JSON propio.
 - **Amplitud fenológica**: mediana de estación seca menos mediana de estación
-  lluviosa, por píxel. Es el producto más discriminante entre copa leñosa y
-  herbácea, porque mide la capacidad de sostener agua durante el año en lugar
-  del vigor de un día concreto.
+  lluviosa, por píxel. Mide **cuánto cambia la cubierta a lo largo del año** en
+  lugar de su estado en una fecha, y por eso separa coberturas que un índice de
+  una sola imagen confunde. Qué clase corresponde a cada rango lo decide el área
+  de estudio y la verdad de campo, no el índice.
 - Recuento de observaciones válidas por píxel y estación (capa `_NOBS`), con
   umbral mínimo configurable: un píxel sustentado en una sola observación no
   entra en el resultado.
@@ -513,11 +522,13 @@ No se sube nada a ningún servidor y no hace falta cuenta de Google.
 
 ## Límites conocidos
 
-**Resolución frente a copas aisladas.** Las bandas SWIR son de 20 m
-(Sentinel-2) o 30 m (Landsat). Un árbol aislado de 5–15 m de copa es
-subpíxel: su señal se mezcla con la del pasto que lo rodea. La amplitud
-fenológica funciona para **dosel continuo**, no para individuos dispersos.
-Para esos hace falta resolución submétrica.
+**Resolución frente a elementos pequeños.** Las bandas SWIR son de 20 m
+(Sentinel-2) o 30 m (Landsat), así que cualquier elemento menor que el píxel
+—un árbol aislado de 5–15 m de copa, un seto, una vivienda, una parcela
+estrecha— entrega una señal **mezclada** con la de su entorno. La amplitud
+fenológica, y en general todo índice de esta resolución, describe cubiertas
+**continuas a escala de píxel**, no objetos individuales. Para esos hace falta
+resolución submétrica: ahí entra Esri World Imagery.
 
 **Memoria.** Los índices y la amplitud se calculan cargando cada banda
 completa en memoria, sin proceso por bloques. El complemento estima el pico
@@ -560,6 +571,7 @@ Copyright © 2026 Jorge Fallas <jfallas56@gmail.com>
 
 | Versión | Fecha | Cambios |
 |---|---|---|
+| 1.3.3 | 2026-10-12 | Revisión de terminología: el objetivo es cobertura y uso de la tierra, y la separación leñosa/herbácea pasa de ser *el* propósito a ser un ejemplo. Los índices nombran la cantidad que miden, no una clase. |
 | 1.3.2 | 2026-10-12 | El RVI dual-pol se cita: Nasirzadehdizaji et al. (2019), derivado del cuadripolar de Kim y van Zyl (2009) suponiendo σHH ≈ σVV. Con la advertencia de citarlo como «RVI dual-pol». |
 | 1.3.1 | 2026-10-09 | El tercer modo del radar dice que su amplitud es **de retrodispersión**, y cada algoritmo remite al otro para la amplitud que no calcula. Corregido un «2. Pedido» duplicado en este README. |
 | 1.3.0 | 2026-10-09 | Las tres componentes de Tasseled Cap en español (brillo, verdor, humedad), cada una con su explicación, y en el orden canónico. **Cambian de posición en la lista**: una selección guardada por índice ya no significa lo mismo. |

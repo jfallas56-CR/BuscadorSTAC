@@ -27,7 +27,7 @@ No requiere credenciales para Earth Search. Planetary Computer usa un
 token SAS anónimo gratuito que el algoritmo solicita automáticamente.
 
 Autor  : Jorge Fallas (jfallas56@gmail.com)
-Versión: 1.3.2
+Versión: 1.3.3
 
 Historial:
     1.0.0 (2026-10-02): Primera versión pública.
@@ -991,7 +991,7 @@ def _geom_desde_geojson(gj):
 # --------------------------------------------------------------------------
 class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
 
-    VERSION = 'v1.3.2'
+    VERSION = 'v1.3.3'
 
     # Lógica pura, definida en core.py y reenganchada aquí como
     # staticmethod. Así cada sitio de llamada sigue siendo
@@ -1551,13 +1551,25 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
         p.setHelp(self.tr(
             'Calcula un GeoTIFF Float32 por índice y escena, recortado al AOI '
             'y con los píxeles de nube y sombra puestos a NaN.<br>'
-            'Para separar copas de árboles de vegetación herbácea y arbustiva, '
-            'los más discriminantes son <b>NDMI</b> y <b>NBR</b>: el SWIR '
-            'responde al agua del dosel, que es mucho mayor en leñosas que en '
-            'pastos, sobre todo en estación seca. NDVI satura sobre dosel '
-            'cerrado y en época lluviosa apenas distingue pasto vigoroso de '
-            'árbol. NDRE y CIre añaden separación por clorofila, pero solo '
-            'existen en Sentinel-2.<br>'
+            'Qué índice conviene depende de la clase de cobertura que quiera '
+            'separar.<br>'
+            '• <b>NDVI</b> y <b>SAVI</b> — cantidad de vegetación verde. SAVI '
+            'corrige el suelo que se ve entre plantas, útil con cobertura '
+            'parcial. NDVI <b>satura</b> donde la vegetación es densa, así que '
+            'distingue mal entre coberturas vegetales cerradas.<br>'
+            '• <b>NDMI</b>, <b>NBR</b> y <b>MSI</b> — agua en la cubierta, por '
+            'el SWIR. No saturan donde el NDVI sí, y separan coberturas que se '
+            'ven igual de verdes pero retienen agua de forma distinta: ahí '
+            'está su valor para cartografía de cobertura y uso.<br>'
+            '• <b>NDRE</b> y <b>CIre</b> — clorofila por borde rojo, sensibles '
+            'a estado y fertilización. Solo existen en Sentinel-2.<br>'
+            '• <b>Tasseled Cap</b> — brillo, verdor y humedad como tres ejes '
+            'independientes; el brillo responde al suelo descubierto y a lo '
+            'construido, que ningún índice de vegetación describe bien.<br>'
+            'Como ejemplo concreto, para separar vegetación leñosa de '
+            'herbácea los más discriminantes son NDMI y NBR, porque el agua '
+            'retenida en la cubierta difiere mucho más entre ambas que el '
+            'verdor, sobre todo en estación seca.<br>'
             '<b>Las tres componentes de Tasseled Cap</b> son una rotación de '
             'las seis bandas, no cocientes, y cada una separa una cosa '
             'distinta:<br>'
@@ -1568,9 +1580,11 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             'visible. Es el eje de la vegetación, parecido al NDVI pero '
             'independiente de los otros dos.<br>'
             '• <b>Humedad</b> — contraste entre visible+NIR y los dos SWIR. '
-            'Responde al agua del dosel y del suelo, y también a la sombra '
-            'entre copas, que es lo que separa bosque maduro de '
-            'regeneración.<br>'
+            'Responde al agua de la cubierta y del suelo, y también a la '
+            'sombra que proyecta una superficie rugosa sobre sí misma. Por '
+            'eso separa cubiertas de estructura distinta aunque tengan '
+            'verdor parecido; en vegetación arbórea, por ejemplo, distingue '
+            'dosel maduro de regeneración.<br>'
             'El cálculo se hace sobre reflectancia, no sobre DN: se aplica el '
             'escalado del sensor, incluido el desplazamiento BOA de la línea '
             'base 04.00 de Sentinel-2 y el desplazamiento aditivo de Landsat '
@@ -1585,15 +1599,22 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             'Agrupa los índices calculados por estación, obtiene la mediana de '
             'cada una y escribe la diferencia seca − lluviosa como capa '
             'independiente (sufijo AMPL).<br>'
-            'Es el producto más discriminante entre copas leñosas y vegetación '
-            'herbácea: mide la capacidad de sostener agua a lo largo del año, '
-            'no el vigor de un día concreto.<br>'
-            '<b>Cómo leer el resultado.</b> La resta es seca − lluvia, de modo '
-            'que los valores salen NEGATIVOS: el índice de humedad baja en '
-            'seca. Cuanto más negativo, mayor es la caída estacional y más '
-            'probable que sea pasto o herbácea; los valores cercanos a cero '
-            'corresponden a vegetación que sostiene agua todo el año, es decir '
-            'dosel leñoso.<br>'
+            'Mide <b>cuánto cambia la cubierta entre estaciones</b>, no su '
+            'estado en un día concreto. Esa es su utilidad para cartografía '
+            'de cobertura y uso: separa coberturas que un índice de una sola '
+            'fecha confunde, porque el régimen estacional distingue lo que el '
+            'valor instantáneo no.<br>'
+            '<b>Cómo leer el resultado.</b> La resta es seca − lluvia, así '
+            'que con un índice de humedad los valores salen NEGATIVOS: baja '
+            'en seca. La magnitud es la <b>amplitud del ciclo estacional</b>; '
+            'cerca de cero significa cubierta estable a lo largo del año.<br>'
+            'Qué cobertura corresponde a cada rango lo decide su área de '
+            'estudio, no el índice. A modo de ejemplo, en paisaje estacional '
+            'húmedo una amplitud grande suele ser vegetación herbácea o '
+            'cultivo anual y una cercana a cero vegetación perenne; pero un '
+            'cuerpo de agua, un suelo desnudo o una superficie construida '
+            'también dan amplitud baja por razones que no son la perennidad. '
+            '<b>Calíbrelo con verdad de campo antes de asignar clases.</b><br>'
             'Se usa la mediana y no la media porque resiste mejor las nubes '
             'que hayan escapado al enmascarado. Requiere al menos una escena '
             'en cada estación, así que conviene ejecutarlo con «Mejor escena '
@@ -1702,6 +1723,9 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
         p.setHelp(self.tr(
             'Solo afecta a índices y amplitud, que son de una banda; las '
             'composiciones RGB no la usan.<br>'
+            'El cero importa en la amplitud porque separa <b>cambio '
+            'estacional</b> de <b>ausencia de cambio</b>, que es la '
+            'distinción que la capa mide.<br>'
             'Las dos paletas son divergentes de ColorBrewer, seguras para '
             'daltonismo, y su <b>color neutro queda anclado en el valor 0</b> '
             'siempre que el cero caiga dentro del rango mostrado. Eso importa: '
@@ -1709,8 +1733,9 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             'de cada imagen, y dos fechas del mismo sitio se verían distintas '
             'sin que el terreno hubiera cambiado.<br>'
             'En NDMI el cero separa NIR &gt; SWIR de NIR &lt; SWIR; en la '
-            'amplitud marca la ausencia de cambio estacional, que es el '
-            'criterio entre leñosa y herbácea.<br>'
+            'amplitud marca la <b>ausencia de cambio estacional</b>, que es '
+            'la frontera que la capa mide, sea cual sea la clase de '
+            'cobertura que haya a cada lado.<br>'
             'Se evitan a propósito las rampas tipo arcoíris (Spectral, turbo): '
             'su espaciado perceptual no es uniforme, inventan bordes en las '
             'transiciones a verde y amarillo, y la pareja verde-rojo se pierde '
@@ -4267,9 +4292,11 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
                         f"{mediana:+.3f}, "
                         f"{100.0 * validos.mean():.0f} % válidos")
                     feedback.pushInfo(
-                        "    Signo: seca − lluvia. Valores MUY NEGATIVOS = "
-                        "gran caída estacional = herbáceas/pasto. Valores "
-                        "CERCANOS A CERO = sin caída = leñosas/dosel.")
+                        "    Signo: seca − lluvia. La MAGNITUD es la amplitud "
+                        "del ciclo estacional: muy negativo = gran caída en "
+                        "seca; cerca de cero = cubierta estable todo el año. "
+                        "Qué cobertura corresponde a cada rango depende del "
+                        "área de estudio; calíbrelo con verdad de campo.")
                 else:
                     # El mensaje anterior culpaba siempre al solapamiento
                     # espacial, que casi nunca es la causa: las escenas ya
