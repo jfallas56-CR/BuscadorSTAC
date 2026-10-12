@@ -1,6 +1,6 @@
 # BuscadorSTAC
 
-![version](https://img.shields.io/badge/version-1.3.1-blue)
+![version](https://img.shields.io/badge/version-1.3.2-blue)
 ![QGIS](https://img.shields.io/badge/QGIS-3.28%20–%204.x-green)
 ![licencia](https://img.shields.io/badge/licencia-GPL%20v2%2B-blue)
 
@@ -221,6 +221,15 @@ emitir ninguna petición HTTP y sin error**.
   (USGS/NASA): acceso abierto. Cite la fuente en cualquier producto derivado.
 - **Productos RTC** generados por **ASF DAAC HyP3** con software GAMMA.
   Requiere una cuenta gratuita de [Earthdata Login](https://urs.earthdata.nasa.gov/).
+- **Índices con autoría.** Dos productos del complemento no son fórmulas
+  genéricas y conviene citarlos como lo que son:
+  - **RVI dual-pol** `4·VH/(VV+VH)` — Nasirzadehdizaji et al. (2019),
+    *Applied Sciences* 9(4), 655, derivado del RVI de cuatro polarizaciones de
+    Kim y van Zyl (2009) suponiendo σHH ≈ σVV. No es el RVI original.
+  - **Tasseled Cap** — coeficientes por sensor: Crist (1985) para TM, Huang
+    et al. (2002) para ETM+, Zhai et al. (2022) para OLI y Shi & Xu (2019)
+    para MSI. Solo los de TM y OLI se derivaron sobre reflectancia de
+    superficie; el algoritmo lo advierte en el registro.
 - **Esri World Imagery NO es dato abierto.** Se rige por el Esri Master License
   Agreement. El complemento avisa de ello en cada ejecución; revise sus
   términos antes de usar esas imágenes en un producto.

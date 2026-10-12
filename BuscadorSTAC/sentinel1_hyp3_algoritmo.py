@@ -51,7 +51,7 @@ El token se escribe en el parámetro correspondiente y NO se guarda en
 ninguna parte: ni en el proyecto, ni en el manifiesto, ni en el registro.
 
 Autor  : Jorge Fallas (jfallas56@gmail.com)
-Versión: 1.3.1
+Versión: 1.3.2
 Licencia: GPL v2 o posterior
 
 Historial:
@@ -167,6 +167,30 @@ RADIOMETRIA = 'gamma0'
 #   RVI dual-pol = 4*VH/(VV+VH). Si VV tiende a 0 la razón crece sin cota, de
 #   modo que el límite superior es algebraico, no físico: con VH = VV da 2.
 #   Se acota en 4.0 para dejar margen y marcar lo demás como artefacto.
+# --------------------------------------------------------------------------
+# RVI dual-pol: de donde sale la formula
+# --------------------------------------------------------------------------
+# El RVI original es de CUATRO polarizaciones (Kim y van Zyl, 2009, IEEE
+# TGRS, «A time-series approach to estimate soil moisture using polarimetric
+# radar data»):
+#
+#     RVI = 8*sHV / (sHH + sVV + 2*sHV)
+#
+# Sentinel-1 no entrega las cuatro. La version de DOS polarizaciones que
+# usa este algoritmo es de Nasirzadehdizaji et al. (2019), Applied Sciences
+# 9(4), 655, y se obtiene SUPONIENDO sHH ~ sVV:
+#
+#     8*sVH / (sVV + sVV + 2*sVH) = 4*sVH / (sVV + sVV)  ->  4*VH/(VV+VH)
+#
+# Esa suposicion es el limite de la medida, y conviene citarla con el
+# indice: HH y VV no son iguales sobre cualquier cubierta, y donde mas se
+# apartan --superficies con rebote doble, cultivos en hilera orientados-- el
+# RVI dual-pol se aleja mas del cuadripolar que pretende aproximar.
+#
+# Consecuencia practica para publicar: es «RVI dual-pol», no «RVI» a secas.
+# No comparte el rango teorico [0, 1] del cuadripolar ni su interpretacion
+# como fraccion de dispersion de volumen; vease el limite de abajo.
+
 LIMITES_SAR = {
     'VH': (0.0, 3.0),
     'VV': (0.0, 3.0),
@@ -665,7 +689,7 @@ class Sentinel1Hyp3Algorithm(QgsProcessingAlgorithm):
     CARPETA = 'CARPETA'
     SALIDA = 'SALIDA'
 
-    VERSION = 'v1.3.1'
+    VERSION = 'v1.3.2'
 
     def __init__(self):
         super().__init__()
@@ -962,10 +986,17 @@ cualquier producto derivado.</p>
             'VH es la polarización cruzada y responde a dispersión de volumen '
             '—hojas y ramas—, que es lo que interesa para estructura. VV '
             'responde más al suelo y a la rugosidad.<br>'
-            'Con ambas se calcula además el <b>RVI</b> dual-pol, '
+            'Con ambas se calcula además el <b>RVI dual-pol</b>, '
             '4·VH/(VV+VH) en potencia, que normaliza parte del efecto de '
-            'humedad del suelo. Pedir las dos NO cuesta el doble: un mismo '
-            'trabajo RTC entrega las dos polarizaciones del gránulo.'))
+            'humedad del suelo —es un cociente, así que el nivel general de '
+            'retrodispersión se cancela en buena parte—. Pedir las dos NO '
+            'cuesta el doble: un mismo trabajo RTC entrega las dos '
+            'polarizaciones del gránulo, y el coste va por gránulo.<br>'
+            'Fórmula de Nasirzadehdizaji et al. (2019), derivada del RVI de '
+            'cuatro polarizaciones de Kim y van Zyl (2009) suponiendo '
+            'σHH ≈ σVV. Cítelo como <b>RVI dual-pol</b>: no comparte el '
+            'rango ni la interpretación del cuadripolar, y la suposición no '
+            'se cumple igual sobre todas las cubiertas.'))
         self.addParameter(p)
 
         p = QgsProcessingParameterBoolean(
@@ -2521,6 +2552,10 @@ cualquier producto derivado.</p>
     def _amplitud_rvi(self, recortes, seca, lluvia, min_obs, man, carpeta,
                       context, feedback):
         """RVI dual-pol = 4*VH/(VV+VH), en potencia, y su amplitud.
+
+        Nasirzadehdizaji et al. (2019), derivado del RVI cuadripolar de
+        Kim y van Zyl (2009) suponiendo sHH ~ sVV. La procedencia y el
+        alcance de esa suposición están arriba, junto a LIMITES_SAR.
 
         El cociente SE CALCULA EN POTENCIA. Con escala dB el resultado no
         sería un cociente de potencias sino una diferencia de logaritmos, que

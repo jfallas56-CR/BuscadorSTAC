@@ -1,6 +1,6 @@
 # Buscador STAC: Sentinel, Landsat y Esri Wayback
 
-![version](https://img.shields.io/badge/version-1.3.1-blue)
+![version](https://img.shields.io/badge/version-1.3.2-blue)
 ![QGIS](https://img.shields.io/badge/QGIS-%E2%89%A5%203.28-green)
 ![licencia](https://img.shields.io/badge/licencia-GPL%20v2%2B-orange)
 
@@ -244,6 +244,29 @@ cambio monótono, así que para la amplitud daría igual, pero cualquier
 potencia: promediar decibelios da un número que no es el promedio de nada.
 Los COG de HyP3 ya vienen calibrados en float32, sin escala ni desplazamiento
 que leer.
+
+**El RVI dual-pol, y de dónde sale.** Pidiendo las dos polarizaciones se
+calcula además el RVI dual-pol, `4·VH/(VV+VH)` en potencia. Es útil junto a la
+amplitud de VH precisamente por el problema que el radar no resuelve solo: al
+ser un **cociente**, el nivel general de retrodispersión —que la humedad del
+suelo mueve— se cancela en buena parte. Un píxel con amplitud grande en VH y
+pequeña en RVI se explica mejor por humedad de suelo que por un cambio de
+vegetación.
+
+La fórmula es de **Nasirzadehdizaji et al. (2019)**, *Applied Sciences* 9(4),
+655, y se obtiene del RVI de cuatro polarizaciones de **Kim y van Zyl (2009)**
+—`8·σHV/(σHH + σVV + 2·σHV)`— suponiendo **σHH ≈ σVV**, que es lo que permite
+usarlo con Sentinel-1, que no entrega las cuatro:
+
+```
+8·σVH / (σVV + σVV + 2·σVH)  =  4·σVH / (σVV + σVH)
+```
+
+Esa suposición es el límite de la medida y conviene citarla con el índice: HH y
+VV no son iguales sobre cualquier cubierta, y donde más se apartan —rebote
+doble, cultivos en hilera orientados— el dual-pol se aleja más del cuadripolar
+que aproxima. **Cítelo como «RVI dual-pol», no como «RVI»**: no comparte el
+rango teórico ni la interpretación del original.
 
 **Cuenta y token.** Hace falta una cuenta gratuita de Earthdata Login y un
 token portador. **Nunca se escribe en el diálogo**: Processing vuelca todos
@@ -537,6 +560,7 @@ Copyright © 2026 Jorge Fallas <jfallas56@gmail.com>
 
 | Versión | Fecha | Cambios |
 |---|---|---|
+| 1.3.2 | 2026-10-12 | El RVI dual-pol se cita: Nasirzadehdizaji et al. (2019), derivado del cuadripolar de Kim y van Zyl (2009) suponiendo σHH ≈ σVV. Con la advertencia de citarlo como «RVI dual-pol». |
 | 1.3.1 | 2026-10-09 | El tercer modo del radar dice que su amplitud es **de retrodispersión**, y cada algoritmo remite al otro para la amplitud que no calcula. Corregido un «2. Pedido» duplicado en este README. |
 | 1.3.0 | 2026-10-09 | Las tres componentes de Tasseled Cap en español (brillo, verdor, humedad), cada una con su explicación, y en el orden canónico. **Cambian de posición en la lista**: una selección guardada por índice ya no significa lo mismo. |
 | 1.2.1 | 2026-10-09 | Cada composición marca a qué cañón de color va cada banda: «Agricultura — R:SWIR 1 · G:NIR · B:azul». «RGB» son los cañones de la pantalla, no las bandas roja/verde/azul. |
