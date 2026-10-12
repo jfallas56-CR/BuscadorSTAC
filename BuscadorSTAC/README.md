@@ -1,6 +1,6 @@
 # Buscador STAC: Sentinel, Landsat y Esri Wayback
 
-![version](https://img.shields.io/badge/version-1.6.0-blue)
+![version](https://img.shields.io/badge/version-1.6.1-blue)
 ![QGIS](https://img.shields.io/badge/QGIS-%E2%89%A5%203.28-green)
 ![licencia](https://img.shields.io/badge/licencia-GPL%20v2%2B-orange)
 
@@ -638,6 +638,7 @@ Copyright © 2026 Jorge Fallas <jfallas56@gmail.com>
 
 | Versión | Fecha | Cambios |
 |---|---|---|
+| 1.6.1 | 2026-10-12 | Se retira de la ayuda de Esri Wayback la cifra «medido sobre un lote de Guanacaste, 5 de 196»: de esa medición no queda rastro, y «medido» afirma un experimento. Se conserva el mecanismo —sobre un lote pequeño quedan unas pocas versiones y no doscientas— y la ayuda remite al modo «Listar», que da el número sobre el área del usuario. |
 | 1.6.0 | 2026-10-12 | **EVI2** (Jiang et al. 2008), once índices: vigor que no se satura en cubierta densa, donde el NDVI deja de informar. Es el único con coeficientes calibrados, así que lleva su procedencia y la suposición en la que se apoya (razón rojo/azul 2.08). Y el texto deja de presentar el complemento como herramienta de Costa Rica: el flujo con nubosidad alta y los meses de estación valen para cualquier región. Lo que se queda es decir cuál es el valor **por omisión**. |
 | 1.5.0 | 2026-10-12 | **Una sola convención numérica, y declarada**: punto decimal, espacio de millar, coma en ningún papel. Convivían tres. Corrige dos defectos reales: los topes de Earth Web salían como «10,000» (que leído en español es diez) y la etiqueta de SAVI enseñaba `L=0,5` dos parámetros antes de «Límites fijos mín,máx», que parte su entrada por la coma y lee `0,5` como el rango 0–5 sin dar error. |
 | 1.4.0 | 2026-10-12 | Resumen en inglés en `about`, `description` bilingüe y cabecera en inglés en el README del repositorio, todos avisando de que la interfaz es solo en español. La interfaz no cambia. |

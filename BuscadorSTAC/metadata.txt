@@ -33,7 +33,7 @@ about=[ENGLISH SUMMARY]
     El cuarto exporta la capa elegida a KMZ y la abre en Google Earth. Un raster se RENDERIZA antes con la simbologia que se ve en QGIS, porque KML no guarda valores sino imagenes pegadas al terreno: volcar un GeoTIFF de NDVI sin renderizar daria una imagen gris ilegible. Lo vectorial va por LIBKML y conserva los atributos; indicando un campo de fecha, cada entidad sale con su TimeStamp y Google Earth muestra el control deslizante de tiempo, util para recorrer una serie de huellas en vez de verlas encimadas. El KMZ lo leen todas las versiones de Google Earth, pero abrirlo solo se puede automatizar en la de escritorio: Earth Web y las apps moviles no permiten que otra aplicacion les entregue un archivo, de modo que para esas el algoritmo deja el archivo y dice como importarlo.
     Numeros: punto para los decimales y espacio para los millares, nunca coma, de modo que las cifras del registro se pegan sin retoques en un campo de extension o de SRC de QGIS, en la consola de Python o en una hoja de calculo. El parametro «Limites fijos min,max» parte su entrada por la coma, asi que ahi una coma decimal se leeria como otro rango sin dar error.
     Datos: Copernicus Sentinel-1 y Sentinel-2 (ESA) y Landsat Collection 2 (USGS/NASA), de acceso abierto; productos RTC generados por ASF DAAC HyP3 con software GAMMA, que requiere una cuenta gratuita de Earthdata Login. Las imagenes de Esri NO son dato abierto: se rigen por el Esri Master License Agreement.
-version=1.6.0
+version=1.6.1
 author=Jorge Fallas
 email=jfallas56@gmail.com
 tracker=https://github.com/jfallas56-CR/BuscadorSTAC/issues
@@ -46,7 +46,25 @@ hasProcessingProvider=yes
 experimental=False
 deprecated=False
 server=False
-changelog=1.6.0 (2026-10-12) EVI2, y el texto deja de ser de Costa Rica.
+changelog=1.6.1 (2026-10-12) Se retira una cifra que no se puede respaldar.
+    La ayuda de Esri Wayback decia «medido sobre un lote de Guanacaste, 5 de
+    196». La palabra «medido» afirma que se corrio un experimento, y de esa
+    cifra no queda rastro: entro con el primer commit publico, que es un
+    aplastado de todo el trabajo previo. Este complemento documenta la
+    procedencia de los coeficientes de Tasseled Cap y del EVI2 precisamente
+    para que una afirmacion asi se pueda comprobar, y esta no se podia.
+    Se retira el numero y se conserva el mecanismo, que es cierto de todas
+    formas: sobre un lote pequeno quedan unas pocas versiones distintas y no
+    doscientas, y por eso el algoritmo las detecta en vez de listarlas todas.
+    En lugar de la cifra, la ayuda remite al modo «Listar», que da el numero
+    sobre el area del usuario antes de descargar nada -- una cifra suya y
+    actual en vez de una ajena y sin fecha.
+    Arreglada ademas la tautologia que 1.6.0 introdujo en esa misma frase: al
+    quitar «Guanacaste» quedo «Sobre un lote rural ... medido sobre un lote
+    rural», porque la segunda mitad decia DONDE se habia medido y, sin el
+    lugar, solo repetia la primera.
+
+    1.6.0 (2026-10-12) EVI2, y el texto deja de ser de Costa Rica.
     EVI2 --Jiang, Huete, Didan y Miura (2008), Remote Sensing of Environment
     112(10) 3833-3845, ec. 15-- se suma a la lista, que pasa a once indices:
       EVI2 = 2.5 * (NIR - rojo) / (NIR + 2.4*rojo + 1)

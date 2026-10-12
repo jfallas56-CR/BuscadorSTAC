@@ -27,7 +27,7 @@ No requiere credenciales para Earth Search. Planetary Computer usa un
 token SAS anónimo gratuito que el algoritmo solicita automáticamente.
 
 Autor  : Jorge Fallas (jfallas56@gmail.com)
-Versión: 1.6.0
+Versión: 1.6.1
 
 Historial:
     1.6.0 (2026-10-12): EVI2 (Jiang et al. 2008), vigor que no se satura
@@ -1000,7 +1000,7 @@ def _geom_desde_geojson(gj):
 # --------------------------------------------------------------------------
 class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
 
-    VERSION = 'v1.6.0'
+    VERSION = 'v1.6.1'
 
     # Lógica pura, definida en core.py y reenganchada aquí como
     # staticmethod. Así cada sitio de llamada sigue siendo
