@@ -17,6 +17,9 @@ about=[ENGLISH SUMMARY]
     dry and wet season months); change the extent or supply an AOI layer.
     IMPORTANT: the user interface is in SPANISH only. There is no English
     translation of the dialogs, parameter help or log messages.
+    Numbers use a period for the decimal mark and a space for thousands
+    (1 234.56), never a comma, so values can be pasted unchanged into QGIS
+    extent and CRS fields, the Python console or a spreadsheet.
     Requires QGIS 3.28 or later. No pip install needed: it uses only the standard
     library, GDAL and numpy, which ship with QGIS.
 
@@ -28,8 +31,9 @@ about=[ENGLISH SUMMARY]
     El segundo algoritmo trae imagenes Esri World Imagery, actuales e historicas (archivo Wayback desde 2014), recortadas al AOI: alta resolucion para fotointerpretar arboles aislados, que a 10-20 m son subpixel. Detecta que versiones del archivo cambian realmente sobre el area y da la fecha de captura real de cada una, no la de publicacion del mosaico.
     El tercero trabaja Sentinel-1 RTC a traves de ASF HyP3, en tres modos: inventario por traza sin consumir creditos, pedido de trabajos RTC con confirmacion explicita de gasto, y colecta de datos con amplitud estacional de retrodispersion. La colecta escribe la amplitud, las DOS medianas por estacion --sin ellas no se sabe sobre que nivel se mide la diferencia--, el recuento de observaciones por pixel y un informe HTML de auditoria autocontenido, y puede reproyectar los productos finales al SRC que se indique, por ejemplo CRTM05. El radar no pierde datos por nube, que es justo la debilidad de la mediana de estacion lluviosa en el camino optico; en cambio responde a la humedad del suelo, asi que es un indicador confundido de otra manera y vale como contraste, no como sustituto. No se mezclan trazas: cada orbita relativa observa con otro angulo de incidencia, de modo que la traza va en el nombre del archivo.
     El cuarto exporta la capa elegida a KMZ y la abre en Google Earth. Un raster se RENDERIZA antes con la simbologia que se ve en QGIS, porque KML no guarda valores sino imagenes pegadas al terreno: volcar un GeoTIFF de NDVI sin renderizar daria una imagen gris ilegible. Lo vectorial va por LIBKML y conserva los atributos; indicando un campo de fecha, cada entidad sale con su TimeStamp y Google Earth muestra el control deslizante de tiempo, util para recorrer una serie de huellas en vez de verlas encimadas. El KMZ lo leen todas las versiones de Google Earth, pero abrirlo solo se puede automatizar en la de escritorio: Earth Web y las apps moviles no permiten que otra aplicacion les entregue un archivo, de modo que para esas el algoritmo deja el archivo y dice como importarlo.
+    Numeros: punto para los decimales y espacio para los millares, nunca coma, de modo que las cifras del registro se pegan sin retoques en un campo de extension o de SRC de QGIS, en la consola de Python o en una hoja de calculo. El parametro «Limites fijos min,max» parte su entrada por la coma, asi que ahi una coma decimal se leeria como otro rango sin dar error.
     Datos: Copernicus Sentinel-1 y Sentinel-2 (ESA) y Landsat Collection 2 (USGS/NASA), de acceso abierto; productos RTC generados por ASF DAAC HyP3 con software GAMMA, que requiere una cuenta gratuita de Earthdata Login. Las imagenes de Esri NO son dato abierto: se rigen por el Esri Master License Agreement.
-version=1.4.0
+version=1.5.0
 author=Jorge Fallas
 email=jfallas56@gmail.com
 tracker=https://github.com/jfallas56-CR/BuscadorSTAC/issues
@@ -42,7 +46,50 @@ hasProcessingProvider=yes
 experimental=False
 deprecated=False
 server=False
-changelog=1.4.0 (2026-10-12) Resumen en ingles para el portal.
+changelog=1.5.0 (2026-10-12) Una sola convencion numerica, y declarada.
+    Punto (.) para los decimales y espacio para los millares --«1 234.56»--,
+    nunca una coma, en ningun papel. La convencion se declara ahora en los
+    cuatro paneles de ayuda, en «about» y en los dos README, porque una cifra
+    solo se lee bien si se sabe que convencion sigue.
+    Convivian TRES a la vez: «10,000» con la coma de millar del ingles en
+    seis sitios, «19 568,0» con coma decimal en cinco, y «19568.04» con punto
+    en setenta y dos. Ahora una.
+    El punto, y no la coma del espanol, porque estas cifras SE COPIAN: a la
+    casilla de extension o de SRC de un dialogo, a la consola de Python, a una
+    hoja de calculo. Un «-83,68» se pega mal en todos ellos y falla callado.
+    La norma cientifica (ISO 80000-1, NIST SP 811) admite punto o coma como
+    marca decimal, de modo que elegir el punto no es un anglicismo; lo que no
+    admite es la coma como separador de millar.
+    DOS DEFECTOS, no una inconsistencia cosmetica:
+    - Los topes de Google Earth Web salian como «10,000» entidades y
+      «250,000» vertices. Leidas con la convencion del espanol son diez y
+      doscientos cincuenta, de modo que quien las leyera asi concluia que su
+      capa de 500 entidades ya pasaba un tope del que estaba lejisimos. Un
+      error de mil veces que invierte el consejo del propio aviso.
+    - La etiqueta «SAVI — NDVI ajustado por suelo descubierto (L=0,5)»
+      ensenaba la coma decimal dos parametros antes de «Limites fijos
+      min,max», que PARTE su entrada por la coma. Escrito «0,5» ese parametro
+      no lee cinco decimas sino el rango «de 0 a 5», y NO DA ERROR: un indice
+      que va de -1 a 1 queda entero en la primera clase y el mapa sale de un
+      solo color. Su ayuda lo dice ahora explicitamente y ofrece el punto y
+      coma como separador sin ambiguedad: «-0.1;0.5».
+    Corregidas ademas tres comas decimales mas en texto de ayuda (el N sigma
+    del realce, los metros de Esri, los niveles de retrodispersion) y un
+    rango escrito «(-1,1)» que se leia como un decimal; ahora «(-1 a 1)».
+    La frase vive en core.NOTA_NUMEROS, no copiada cuatro veces: basto que
+    una copia dijera «coma decimal» mientras el codigo ya ponia punto para
+    que la ayuda mintiera.
+    Y la vigila comp_convencion_numerica, porque una promesa en la ayuda se
+    podre sola en cuanto alguien escriba el siguiente f-string. Seis
+    comprobaciones: ningun especificador con coma de millar (en f-string y en
+    plantilla de .format()), miles() devuelve punto y se puede releer con
+    float(), la nota existe y nombra la convencion, ningun texto escribe una
+    coma decimal a mano, y los cuatro paneles la citan. Con nueve pruebas que
+    rompen una copia a proposito, mas dos controles negativos: la coma que
+    miles() le pide a Python para convertirla, y la que separa los dos
+    numeros dentro de <code>, que son legitimas.
+
+    1.4.0 (2026-10-12) Resumen en ingles para el portal.
     El portal de complementos se navega en ingles y en todo el mundo, de
     modo que quien no lee espanol veia solo espanol y pasaba de largo. El
     complemento no hace nada especifico de Costa Rica --solo los valores

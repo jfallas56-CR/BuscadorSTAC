@@ -25,7 +25,7 @@ cambió ni una línea de ellos.
 
 Autor    : Jorge Fallas (jfallas56@gmail.com)
 Licencia : GPL v2 o posterior
-Versión  : 1.4.0
+Versión  : 1.5.0
 """
 
 import datetime
@@ -92,7 +92,7 @@ TC_ORDEN_BANDAS = (
 INDICES_ESPECTRALES = [
     ("NDVI — vigor general (NIR, Rojo)", "NDVI",
      ('nir', 'red'), False),
-    ("SAVI — NDVI ajustado por suelo descubierto (L=0,5)", "SAVI",
+    ("SAVI — NDVI ajustado por suelo descubierto (L=0.5)", "SAVI",
      ('nir', 'red'), False),
     ("NDMI — humedad de la cubierta (NIR, SWIR1)", "NDMI",
      ('nir08', 'swir16'), False),
@@ -1155,7 +1155,23 @@ ESPACIO_FINO = '\u202f'
 
 
 def miles(valor, decimales=0):
-    """Numero en convencion espanola: millar con espacio fino, coma decimal.
+    """Numero en la convencion UNICA del complemento: espacio fino para
+    el millar, PUNTO para el decimal. Nunca una coma, en ningun papel.
+
+    Punto decimal, aunque la convencion del espanol sea la coma, porque
+    estos numeros se copian: a un campo de extension o de SRC de QGIS, a
+    la consola de Python, a una hoja de calculo. Un «-83,68» se pega mal
+    en todos ellos, y falla callado --se parte en dos valores o se lee
+    como otro numero--. La norma cientifica (ISO 80000-1, NIST SP 811)
+    admite punto o coma como marca decimal, asi que elegir el punto no es
+    un anglicismo; lo que la norma NO admite es la coma como separador de
+    millar, y de eso venia el defecto que esta funcion existe para cerrar.
+
+    Y nunca una coma de millar --el «{:,}» de Python-- porque «10,000»
+    leido con la convencion del espanol es DIEZ. Esa cifra aparecia en el
+    aviso del tope de entidades de Google Earth Web: quien la leyera como
+    diez concluia que su capa de 500 entidades ya pasaba un tope del que
+    estaba lejisimos. Un error de mil veces que invierte el consejo.
 
     Se formatea APARTE de la frase a proposito. Antes el numero se metia
     en la frase y luego se hacia .replace(',', ' ') sobre TODA la cadena:
@@ -1164,18 +1180,30 @@ def miles(valor, decimales=0):
     servicio no la de lo que usted ve», y el error llego hasta el porque
     nada lo podia detectar: la frase era gramaticalmente plausible.
 
-    No se usa en coordenadas. Un «-83,68» se copia mal a un campo de
-    extension o de SRC, donde QGIS espera punto; ahi el punto decimal es
-    lo correcto aunque no sea la convencion del idioma.
+    La comprobacion «comp_convencion_numerica» de tools/preflight.py
+    vigila que no reaparezca una coma por ningun lado.
     """
     try:
         texto = '{:,.{d}f}'.format(float(valor), d=int(decimales))
     except (TypeError, ValueError):
         return ''
-    # Primero el millar a un marcador, luego el decimal a coma, y al
-    # final el marcador al espacio fino: hacerlo en otro orden se pisa.
-    return (texto.replace(',', '\x00').replace('.', ',')
-                 .replace('\x00', ESPACIO_FINO))
+    # El punto decimal que pone Python ya es el que queremos; solo hay que
+    # cambiar su coma de millar por el espacio fino.
+    return texto.replace(',', ESPACIO_FINO)
+
+
+# La convencion, declarada al usuario. Vive aqui y no copiada en cada
+# shortHelpString porque cuatro copias de la misma frase se separan: basto
+# que una dijera «coma decimal» mientras el codigo ya ponia punto para que
+# la ayuda mintiera. Cada algoritmo la envuelve en su propio marcado
+# --unos usan <b>..</b><br>, otro <p>-- pero la frase es una sola.
+NOTA_NUMEROS = (
+    'Punto (.) para los decimales y espacio para los millares: '
+    f'«1{ESPACIO_FINO}234.56». Así los valores del registro se pegan sin '
+    'retoques en un campo de extensión o de SRC de QGIS, en la consola de '
+    'Python o en una hoja de cálculo. No se usa la coma en ningún papel, '
+    'porque «10,000» leído con la convención del español es diez.'
+)
 
 
 # ==========================================================================

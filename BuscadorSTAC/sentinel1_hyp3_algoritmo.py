@@ -51,10 +51,15 @@ El token se escribe en el parámetro correspondiente y NO se guarda en
 ninguna parte: ni en el proyecto, ni en el manifiesto, ni en el registro.
 
 Autor  : Jorge Fallas (jfallas56@gmail.com)
-Versión: 1.4.0
+Versión: 1.5.0
 Licencia: GPL v2 o posterior
 
 Historial:
+    1.5.0 (2026-10-12): Una sola convención numérica, declarada en la
+        ayuda: espacio de millar, PUNTO decimal, coma en ningún papel.
+        El punto porque estas cifras se copian a campos de QGIS, a la
+        consola de Python y a hojas de cálculo, donde una coma decimal
+        falla callada.
     1.0.0 (2026-10-02): Primera versión pública.
         El historial detallado del desarrollo previo a la publicación está en
         CHANGELOG.md del repositorio:
@@ -104,7 +109,7 @@ from osgeo import gdal
 from .buscar_sentinel2_algoritmo import (
     AUTOR, AUTOR_EMAIL, RealcePostProcessor, _TIPO_POLIGONO, _cargar_pendientes,
     _enum_qgis, _registrar_postproc)
-from .core import (CREDITOS_RTC, lista_con_zip,
+from .core import (CREDITOS_RTC, NOTA_NUMEROS, lista_con_zip,
                    opciones_asequibles, ordenar_trazas,
                    sin_firma_url, sin_prefijo_bearer)
 
@@ -689,7 +694,7 @@ class Sentinel1Hyp3Algorithm(QgsProcessingAlgorithm):
     CARPETA = 'CARPETA'
     SALIDA = 'SALIDA'
 
-    VERSION = 'v1.4.0'
+    VERSION = 'v1.5.0'
 
     def __init__(self):
         super().__init__()
@@ -790,7 +795,7 @@ aún no esté listo se informa y se vuelve a intentar más tarde.</li>
 lluvia, en potencia.</li>
 <li><code>MEDSECA_…</code> y <code>MEDLLUV_…</code> — las dos medianas por
 separado. La amplitud sola no dice sobre qué nivel se mide: una diferencia de
-0,001 no significa lo mismo sobre un fondo de 0,005 que sobre uno de 0,05.
+0.001 no significa lo mismo sobre un fondo de 0.005 que sobre uno de 0.05.
 Llevan la misma máscara que la amplitud, así que restarlas da exactamente el
 ráster de amplitud.</li>
 <li><code>…_NOBS.tif</code> — observaciones válidas por píxel, banda 1 seca y
@@ -848,6 +853,8 @@ de sobra; el inventario le da la cifra exacta antes de gastar nada.</p>
 invariante al cambio monótono, así que para la amplitud daría igual, pero
 cualquier cociente (RVI, VH/VV) y cualquier promedio hay que calcularlos en
 potencia: promediar decibelios da un número que no es el promedio de nada.</p>
+
+<p><b>Números.</b> {NOTA_NUMEROS}</p>
 
 <p><b>Datos.</b> Copernicus Sentinel data, procesados por ESA; productos RTC
 generados por ASF DAAC HyP3 con software GAMMA. Cite ambas fuentes en

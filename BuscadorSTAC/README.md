@@ -1,6 +1,6 @@
 # Buscador STAC: Sentinel, Landsat y Esri Wayback
 
-![version](https://img.shields.io/badge/version-1.4.0-blue)
+![version](https://img.shields.io/badge/version-1.5.0-blue)
 ![QGIS](https://img.shields.io/badge/QGIS-%E2%89%A5%203.28-green)
 ![licencia](https://img.shields.io/badge/licencia-GPL%20v2%2B-orange)
 
@@ -545,6 +545,34 @@ implicadas. El día de la primera no queda en el nombre: está en el campo
 
 ---
 
+## Números
+
+**Punto (.) para los decimales y espacio para los millares: `1 234.56`.** Nunca
+una coma, en ningún papel. Es la convención en todo el complemento: rótulos,
+ayudas, mensajes del registro y nombres de archivo.
+
+El punto, y no la coma del español, porque estas cifras **se copian**: a la
+casilla de extensión o de SRC de un diálogo de QGIS, a la consola de Python, a
+una hoja de cálculo. Un `-83,68` se pega mal en todos ellos y falla callado —se
+parte en dos valores o se lee como otro número—. La norma científica
+(ISO 80000-1, NIST SP 811) admite punto o coma como marca decimal, así que
+elegir el punto no es un anglicismo; lo que la norma no admite es la coma como
+separador de millar.
+
+Y nunca una coma de millar, porque **`10,000` leído con la convención del
+español es diez**. Esa cifra estaba en el aviso del tope de entidades de Google
+Earth Web: quien la leyera como diez concluía que su capa de 500 entidades ya
+pasaba un tope del que estaba lejísimos.
+
+> **Dónde importa de verdad.** El parámetro **«Límites fijos mín,máx»** separa
+> sus dos números **por la coma**. Escrito `0,5` no se lee como cinco décimas
+> sino como el rango «de 0 a 5», y **no da error**: la capa se clasifica entre
+> 0 y 5, de modo que un índice que va de −1 a 1 queda entero en la primera
+> clase y el mapa sale de un solo color. Si prefiere no tener que pensarlo,
+> separe con punto y coma: `-0.1;0.5`.
+
+---
+
 ## Datos y atribución
 
 - **Sentinel-2**: Copernicus Sentinel data, procesados por ESA. Acceso
@@ -571,6 +599,7 @@ Copyright © 2026 Jorge Fallas <jfallas56@gmail.com>
 
 | Versión | Fecha | Cambios |
 |---|---|---|
+| 1.5.0 | 2026-10-12 | **Una sola convención numérica, y declarada**: punto decimal, espacio de millar, coma en ningún papel. Convivían tres. Corrige dos defectos reales: los topes de Earth Web salían como «10,000» (que leído en español es diez) y la etiqueta de SAVI enseñaba `L=0,5` dos parámetros antes de «Límites fijos mín,máx», que parte su entrada por la coma y lee `0,5` como el rango 0–5 sin dar error. |
 | 1.4.0 | 2026-10-12 | Resumen en inglés en `about`, `description` bilingüe y cabecera en inglés en el README del repositorio, todos avisando de que la interfaz es solo en español. La interfaz no cambia. |
 | 1.3.3 | 2026-10-12 | Revisión de terminología: el objetivo es cobertura y uso de la tierra, y la separación leñosa/herbácea pasa de ser *el* propósito a ser un ejemplo. Los índices nombran la cantidad que miden, no una clase. |
 | 1.3.2 | 2026-10-12 | El RVI dual-pol se cita: Nasirzadehdizaji et al. (2019), derivado del cuadripolar de Kim y van Zyl (2009) suponiendo σHH ≈ σVV. Con la advertencia de citarlo como «RVI dual-pol». |

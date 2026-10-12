@@ -1212,13 +1212,42 @@ def test_reconoce_los_proveedores_servidos_por_la_red():
         assert not core.es_proveedor_remoto(p), p
 
 
-def test_miles_usa_la_convencion_espanola():
-    """Espacio fino de millar y COMA decimal."""
-    assert core.miles(19568) == '19 568'
-    assert core.miles(19568.04, 1) == '19 568,0'
-    assert core.miles(1234567.89, 2) == '1 234 567,89'
-    assert core.miles(5.4, 1) == '5,4'
+def test_miles_usa_la_convencion_del_complemento():
+    """Espacio fino de millar y PUNTO decimal.
+
+    El punto, y no la coma del espanol, porque la ayuda promete que estas
+    cifras se pegan sin cambios en un campo de QGIS o en Python.
+    """
+    e = core.ESPACIO_FINO
+    assert core.miles(19568) == f'19{e}568'
+    assert core.miles(19568.04, 1) == f'19{e}568.0'
+    assert core.miles(1234567.89, 2) == f'1{e}234{e}567.89'
+    assert core.miles(5.4, 1) == '5.4'
     assert core.miles(0) == '0'
+
+
+def test_miles_nunca_emite_una_coma():
+    """La invariante que sostiene la frase de la ayuda.
+
+    «10,000» leido con la convencion del espanol es DIEZ. Esa cifra
+    aparecia en el aviso del tope de entidades de Earth Web, donde un
+    error de mil veces invierte el consejo.
+    """
+    for valor in (0, 5.4, 999, 1000, 10000, 250000, 1234567.89, -83.68,
+                  1e9):
+        for d in (0, 1, 2, 5):
+            assert ',' not in core.miles(valor, d), (valor, d)
+
+
+def test_miles_se_puede_pegar_en_un_campo_de_qgis():
+    """Quitado el separador de millar, float() lo vuelve a leer.
+
+    Es la promesa concreta de la ayuda: el valor del registro se copia a
+    un campo de extension, de SRC o a una hoja de calculo sin retoques.
+    """
+    for valor in (19568.04, 1234567.89, -83.68, 0.5):
+        texto = core.miles(valor, 2).replace(core.ESPACIO_FINO, '')
+        assert abs(float(texto) - valor) < 0.005, texto
 
 
 def test_miles_no_toca_la_prosa_que_lo_rodea():

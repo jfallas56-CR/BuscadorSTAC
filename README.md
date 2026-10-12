@@ -1,6 +1,6 @@
 # BuscadorSTAC
 
-![version](https://img.shields.io/badge/version-1.4.0-blue)
+![version](https://img.shields.io/badge/version-1.5.0-blue)
 ![QGIS](https://img.shields.io/badge/QGIS-3.28%20–%204.x-green)
 ![licencia](https://img.shields.io/badge/licencia-GPL%20v2%2B-blue)
 
@@ -73,6 +73,14 @@ también en el menú Complementos → Buscador STAC.
 El detalle de cada parámetro está en el panel de ayuda del propio diálogo, y la
 documentación de usuario completa en
 [`BuscadorSTAC/README.md`](BuscadorSTAC/README.md).
+
+**Una sola convención numérica:** punto para los decimales y espacio para los
+millares (`1 234.56`), nunca una coma. Vive en `core.NOTA_NUMEROS`, se declara
+en los cuatro paneles de ayuda y la vigila `comp_convencion_numerica` en
+preflight, porque una frase así en la ayuda se podre sola en cuanto alguien
+escriba el siguiente f-string. El motivo no es cosmético: el parámetro «Límites
+fijos mín,máx» parte su entrada por la coma, así que un `0,5` escrito ahí se lee
+como el rango 0–5 y no da error.
 
 ---
 

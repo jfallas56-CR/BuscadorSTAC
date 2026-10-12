@@ -996,6 +996,206 @@ def comp_padres_de_campo(inf):
         'tumbaria QGIS al abrir el dialogo: ' + '; '.join(malos))
 
 
+def comp_convencion_numerica(inf):
+    """Una sola convencion numerica, y declarada: espacio de millar, punto
+    decimal, coma en ningun papel.
+
+    La ayuda promete al usuario que las cifras del registro se pegan sin
+    retoques en un campo de QGIS. Una frase asi en la ayuda se podre sola
+    en cuanto alguien escriba el siguiente f-string, de modo que la
+    promesa necesita un guardian, no buena voluntad.
+
+    Lo que habia antes de esta comprobacion eran TRES convenciones a la
+    vez en el mismo complemento:
+
+        f'{TOPE_ENTIDADES_WEB:,}'  ->  «10,000»     (6 sitios)
+        miles(x, 1)                ->  «19 568,0»   (5 sitios)
+        f'{x:.2f}'                 ->  «19568.04»   (72 sitios)
+
+    y la primera era un defecto de verdad, no una inconsistencia
+    cosmetica: «10,000» leido con la convencion del espanol es DIEZ. Esa
+    cifra estaba en el aviso del tope de entidades de Google Earth Web,
+    donde quien la leyera como diez concluia que su capa de 500 entidades
+    ya pasaba un tope del que estaba lejisimos. Un error de mil veces que
+    invierte el consejo que el aviso da.
+
+    La coma de millar de Python --el «,» del especificador de formato--
+    queda prohibida en todo el paquete. La unica excepcion es el cuerpo de
+    core.miles(), que la pide a Python y acto seguido la cambia por el
+    espacio fino: es el sitio donde la conversion ocurre.
+    """
+    inf.seccion('Convencion numerica')
+
+    # --- A) ningun especificador de formato con coma de millar ----------
+    # Se miran los f-strings de TODO el paquete, no solo los que estan
+    # dentro de tr()/pushInfo(): un numero se formatea a menudo en una
+    # variable y se junta despues. Los docstrings no son JoinedStr, asi
+    # que el «{:,}» que el de miles() cita como contraejemplo no cuenta.
+    malos = []
+    especs = 0
+    for archivo in sorted(os.listdir(DIR_PAQUETE)):
+        if not archivo.endswith('.py'):
+            continue
+        try:
+            arbol = ast.parse(_texto(os.path.join(DIR_PAQUETE, archivo)))
+        except SyntaxError:
+            continue
+        # El cuerpo de miles(): la excepcion, por rango de lineas.
+        exentas = set()
+        for nodo in ast.walk(arbol):
+            if isinstance(nodo, ast.FunctionDef) and nodo.name == 'miles':
+                exentas.update(range(nodo.lineno, (nodo.end_lineno or
+                                                   nodo.lineno) + 1))
+        for nodo in ast.walk(arbol):
+            if not (isinstance(nodo, ast.FormattedValue)
+                    and nodo.format_spec is not None):
+                continue
+            espec = ''.join(c.value for c in nodo.format_spec.values
+                            if isinstance(c, ast.Constant)
+                            and isinstance(c.value, str))
+            especs += 1
+            if ',' in espec and getattr(nodo, 'lineno', 0) not in exentas:
+                malos.append(f'{archivo}:{nodo.lineno} «:{espec}»')
+
+    # Y las plantillas de .format(), que no son f-strings: solo las que
+    # llegan al usuario, para no tropezar con la prosa de los docstrings.
+    campo_con_coma = re.compile(r'\{[^{}]*:[^{}]*,[^{}]*\}')
+    for archivo in sorted(os.listdir(DIR_PAQUETE)):
+        if not archivo.endswith('.py'):
+            continue
+        try:
+            arbol = ast.parse(_texto(os.path.join(DIR_PAQUETE, archivo)))
+        except SyntaxError:
+            continue
+        for nodo in ast.walk(arbol):
+            if not (isinstance(nodo, ast.Call)
+                    and isinstance(nodo.func, ast.Attribute)
+                    and nodo.func.attr in ('tr', 'setHelp', 'pushInfo',
+                                           'pushWarning')):
+                continue
+            for hijo in ast.walk(nodo):
+                if (isinstance(hijo, ast.Constant)
+                        and isinstance(hijo.value, str)
+                        and campo_con_coma.search(hijo.value)):
+                    malos.append(f'{archivo}:{hijo.lineno} plantilla '
+                                 f'.format() con coma de millar')
+
+    if not inf.comprobar(f'se revisaron {especs} especificador(es) de '
+                         f'formato', especs > 0):
+        return
+    inf.comprobar(
+        'ningun numero de la interfaz lleva coma de millar', not malos,
+        '«10,000» leido en espanol es diez: ' + '; '.join(sorted(malos)[:8]))
+
+    # --- B) y miles() cumple de verdad lo que la ayuda promete ----------
+    try:
+        import importlib.util
+        _spec = importlib.util.spec_from_file_location(
+            '_core_numeros', os.path.join(DIR_PAQUETE, 'core.py'))
+        _core = importlib.util.module_from_spec(_spec)
+        _spec.loader.exec_module(_core)
+    except Exception as e:                          # pragma: no cover
+        inf.comprobar('core.py se puede cargar suelto, sin QGIS', False,
+                      str(e))
+        return
+
+    fallos = []
+    for valor in (0, 5.4, 999, 1000, 10000, 250000, 1234567.89, -83.68):
+        for d in (0, 1, 2, 5):
+            texto = _core.miles(valor, d)
+            if ',' in texto:
+                fallos.append(f'miles({valor}, {d}) = «{texto}»')
+                continue
+            # La promesa concreta: quitado el millar, float() lo relee.
+            try:
+                float(texto.replace(_core.ESPACIO_FINO, ''))
+            except ValueError:
+                fallos.append(f'miles({valor}, {d}) = «{texto}» no es un '
+                              f'numero para float()')
+    inf.comprobar('miles() da punto decimal y se puede pegar en QGIS',
+                  not fallos, '; '.join(fallos[:6]))
+
+    # --- C) la convencion esta DECLARADA, y una sola vez ----------------
+    nota = getattr(_core, 'NOTA_NUMEROS', '')
+    inf.comprobar(
+        'core.NOTA_NUMEROS declara la convencion',
+        bool(nota) and 'punto' in nota.lower() and 'millar' in nota.lower()
+        and _core.ESPACIO_FINO in nota,
+        'debe nombrar el punto decimal, el millar y traer el ejemplo con '
+        'espacio fino')
+
+    # --- D) ni una coma decimal escrita a mano -------------------------
+    # La mitad que ningun barrido de FORMATO puede ver: una coma puesta
+    # dentro del texto. Habia cuatro, y una era peligrosa de verdad --la
+    # etiqueta «SAVI ... (L=0,5)»-- porque ensenaba la convencion
+    # equivocada dos parametros antes de «Limites fijos min,max», que
+    # PARTE la entrada por la coma: escrito «0,5» ese parametro no lee
+    # cinco decimas sino el rango 0 a 5, no da error, y un indice que va
+    # de -1 a 1 queda entero en la primera clase.
+    #
+    # Se exime lo que va dentro de <code>..</code>: ahi la coma separa
+    # dos numeros a proposito, que es justo la sintaxis de entrada.
+    # Las cadenas contiguas de una misma llamada se unen antes de mirar,
+    # para que ni un <code> ni una coma partidos entre dos lineas de
+    # fuente se escapen.
+    re_codigo = re.compile(r'<code>.*?</code>', re.S)
+    re_coma_decimal = re.compile(r'\d,\d')
+    comas = []
+    for archivo in sorted(os.listdir(DIR_PAQUETE)):
+        if not archivo.endswith('.py'):
+            continue
+        try:
+            arbol = ast.parse(_texto(os.path.join(DIR_PAQUETE, archivo)))
+        except SyntaxError:
+            continue
+        grupos = []
+        for nodo in ast.walk(arbol):
+            if (isinstance(nodo, ast.Call)
+                    and getattr(nodo.func, 'attr',
+                                getattr(nodo.func, 'id', '')) in _UI):
+                grupos.append((nodo.lineno, ''.join(
+                    h.value for h in ast.walk(nodo)
+                    if isinstance(h, ast.Constant)
+                    and isinstance(h.value, str))))
+            elif (isinstance(nodo, ast.Assign)
+                    and isinstance(nodo.value, (ast.List, ast.Tuple,
+                                                ast.Dict))
+                    and getattr(nodo.targets[0], 'id', '').isupper()):
+                grupos.extend(
+                    (h.lineno, h.value) for h in ast.walk(nodo.value)
+                    if isinstance(h, ast.Constant)
+                    and isinstance(h.value, str))
+        for linea, texto in grupos:
+            limpio = re_codigo.sub(' ', texto)
+            m = re_coma_decimal.search(limpio)
+            if m:
+                comas.append(f'{archivo}:{linea} '
+                             f'«{limpio[max(0, m.start() - 25):m.end() + 15]}»')
+    inf.comprobar(
+        'ningun texto de la interfaz escribe una coma decimal', not comas,
+        'contradice lo que la ayuda promete: ' + '; '.join(sorted(comas)[:6]))
+
+    sin_nota = []
+    for archivo in sorted(os.listdir(DIR_PAQUETE)):
+        if not archivo.endswith('_algoritmo.py'):
+            continue
+        texto = _texto(os.path.join(DIR_PAQUETE, archivo))
+        try:
+            arbol = ast.parse(texto)
+        except SyntaxError:
+            continue
+        for nodo in ast.walk(arbol):
+            if not (isinstance(nodo, ast.FunctionDef)
+                    and nodo.name == 'shortHelpString'):
+                continue
+            cuerpo = ast.get_source_segment(texto, nodo) or ''
+            if 'NOTA_NUMEROS' not in cuerpo:
+                sin_nota.append(f'{archivo}:{nodo.lineno}')
+    inf.comprobar(
+        'los cuatro paneles de ayuda citan NOTA_NUMEROS', not sin_nota,
+        'la ayuda de estos no declara la convencion: ' + ', '.join(sin_nota))
+
+
 def comp_ayuda_parametros(inf):
     """Todo parametro de Processing necesita setHelp().
 
@@ -1303,6 +1503,7 @@ def main(argv=None):
     comp_interfaz_en_espanol(inf)
     comp_claves_de_banda(inf)
     comp_padres_de_campo(inf)
+    comp_convencion_numerica(inf)
     comp_ayuda_parametros(inf)
     comp_escaneo(inf)
     comp_version_coherente(g, inf)

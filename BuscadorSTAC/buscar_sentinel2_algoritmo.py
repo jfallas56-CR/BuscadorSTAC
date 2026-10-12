@@ -27,9 +27,14 @@ No requiere credenciales para Earth Search. Planetary Computer usa un
 token SAS anónimo gratuito que el algoritmo solicita automáticamente.
 
 Autor  : Jorge Fallas (jfallas56@gmail.com)
-Versión: 1.4.0
+Versión: 1.5.0
 
 Historial:
+    1.5.0 (2026-10-12): Una sola convención numérica, declarada en la
+        ayuda: espacio de millar, PUNTO decimal, coma en ningún papel.
+        El punto porque estas cifras se copian a campos de QGIS, a la
+        consola de Python y a hojas de cálculo, donde una coma decimal
+        falla callada.
     1.0.0 (2026-10-02): Primera versión pública.
         El historial detallado del desarrollo previo a la publicación está en
         CHANGELOG.md del repositorio:
@@ -101,7 +106,7 @@ from .core import (
     _memoria_estimada, _parsear_limites, _parsear_meses,
     _periodos_sin_datos, _procedencia_huellas, _reducir_por_periodo,
     _res_nativa, _salida_volatil, _tamano_salida, _validar_ortonormalidad,
-    CLAVES_BANDAS, ETIQUETAS_BANDAS, SIN_EQUIVALENTE_LS,
+    CLAVES_BANDAS, ETIQUETAS_BANDAS, NOTA_NUMEROS, SIN_EQUIVALENTE_LS,
     alias_banda, bandas_duplicadas, composiciones_vetadas,
     etiqueta_banda, sufijo_banda)
 
@@ -991,7 +996,7 @@ def _geom_desde_geojson(gj):
 # --------------------------------------------------------------------------
 class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
 
-    VERSION = 'v1.4.0'
+    VERSION = 'v1.5.0'
 
     # Lógica pura, definida en core.py y reenganchada aquí como
     # staticmethod. Así cada sitio de llamada sigue siendo
@@ -1195,7 +1200,9 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             "<b>Si la amplitud sale vacía</b>, el aviso distingue la causa: "
             "una estación entera nublada, «Mínimo de observaciones por píxel» "
             "demasiado alto (indica el valor que sí funcionaría), o escenas "
-            "que no cubren el mismo trozo de AOI en las dos estaciones."
+            "que no cubren el mismo trozo de AOI en las dos estaciones.<br><br>"
+            "<b>Números</b><br>"
+            f"{NOTA_NUMEROS}"
             "<hr>"
             f"<b>Autor:</b> {AUTOR} &lt;{AUTOR_EMAIL}&gt;<br>"
             f"<b>Versión:</b> {self.VERSION} · <b>Licencia:</b> GPL v2 o "
@@ -1702,7 +1709,7 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             'realce en la distribución real de valores y no en sus extremos, '
             'así que resiste los nodata y las nubes. Es la opción recomendada '
             'para recortes pequeños como un AOI de pocas hectáreas. Con N = 2 '
-            'se cubre alrededor del 95 % de los valores; baje a 1,5 para más '
+            'se cubre alrededor del 95 % de los valores; baje a 1.5 para más '
             'contraste, suba a 3 si aparecen zonas saturadas.<br>'
             '<b>Mínimo / máximo</b>: usa los extremos sin recortar. Un solo '
             'píxel atípico aplasta todo el resto; úselo solo para inspeccionar '
@@ -1768,7 +1775,7 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             'límites.<br><br>'
             'Con «Límites fijos» vacío los límites se calculan por capa, de '
             'modo que una misma clase significa cosas distintas en cada fecha. '
-            'Con límites simétricos (−1,1 en los índices habituales) un '
+            'Con límites simétricos (−1 a 1 en los índices habituales) un '
             'número <b>par</b> deja el cero justo en un borde de clase; uno '
             'impar lo mete dentro de una clase y el color neutro deja de '
             'marcar la frontera con significado físico, sobre lo que el '
@@ -1782,6 +1789,12 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
         p.setHelp(self.tr(
             'Dos números separados por coma, por ejemplo <code>-0.1,0.5</code> '
             'para NDMI o <code>-0.6,0.1</code> para la amplitud.<br>'
+            '<b>Aquí la coma separa los dos números: el decimal es el '
+            'punto.</b> Escrito <code>0,5</code> esto no se lee como un cinco '
+            'décimas, sino como el rango «de 0 a 5», y no da error: la capa '
+            'se clasifica entre 0 y 5, de modo que un índice que va de −1 a 1 '
+            'queda entero en la primera clase. Si prefiere no tener que '
+            'pensarlo, separe con punto y coma: <code>-0.1;0.5</code>.<br>'
             '<b>Fíjelos si va a comparar fechas.</b> Dejados en blanco, cada '
             'capa calcula los suyos y el mismo valor recibe colores distintos '
             'según la escena — el mismo defecto que hace inservible la '

@@ -758,3 +758,142 @@ def test_el_ingles_fuera_del_bloque_marcado_si_dispara(copia):
         'una fuga en la parte espanola de «about» tiene que bloquear aunque '
         'el campo contenga un bloque en ingles. Bloqueantes: %r'
         % _bloqueantes(datos))
+
+
+# =====================================================================
+# Convencion numerica: espacio de millar, punto decimal, coma en ningun
+# papel. La ayuda se lo promete al usuario; estas pruebas son el motivo
+# por el que la promesa se sostiene cuando alguien escriba el siguiente
+# f-string.
+# =====================================================================
+def test_detecta_coma_de_millar_en_un_f_string(copia):
+    """El defecto real que cerro esta comprobacion.
+
+    «10,000» leido con la convencion del espanol es DIEZ, y esa cifra
+    estaba en el aviso del tope de entidades de Earth Web: quien la
+    leyera como diez concluia que su capa de 500 entidades ya pasaba un
+    tope del que estaba lejisimos.
+    """
+    t = _leer(copia, 'buscar_sentinel2_provider.py')
+    t += ('\n\ndef _roto(feedback, n):\n'
+          '    feedback.pushInfo(f"Se encontraron {n:,} escenas")\n')
+    _escribir(copia, 'buscar_sentinel2_provider.py', t)
+    _, datos = _correr(copia)
+    assert _dice(datos, 'coma de millar'), _bloqueantes(datos)
+
+
+def test_detecta_coma_de_millar_en_una_plantilla_de_format(copia):
+    """Los f-strings no son la unica via: .format() tiene la misma coma.
+
+    Se comprueba aparte porque el especificador vive en el texto de la
+    cadena, no en un nodo FormattedValue, y un barrido que solo mire
+    f-strings lo deja pasar entero.
+    """
+    t = _leer(copia, 'buscar_sentinel2_provider.py')
+    t += ('\n\ndef _roto(feedback, n):\n'
+          '    feedback.pushWarning("Son {:,} teselas".format(n))\n')
+    _escribir(copia, 'buscar_sentinel2_provider.py', t)
+    _, datos = _correr(copia)
+    assert _dice(datos, 'coma de millar'), _bloqueantes(datos)
+
+
+def test_la_coma_interna_de_miles_no_dispara_el_barrido(copia):
+    """El control negativo, y el unico sitio exento.
+
+    core.miles() le PIDE la coma a Python y acto seguido la cambia por el
+    espacio fino: es donde la conversion ocurre. Si la exencion no
+    existiera, el complemento real no podria pasar nunca, y la unica
+    salida seria aflojar la comprobacion.
+    """
+    assert "'{:,.{d}f}'" in _leer(copia, 'core.py'), (
+        'cambio la implementacion de miles(); revise que esta prueba '
+        'siga apuntando al sitio exento')
+    _, datos = _correr(copia)
+    assert not _dice(datos, 'coma de millar'), _bloqueantes(datos)
+
+
+def test_detecta_miles_con_coma_decimal(copia):
+    """La mitad de comportamiento: el barrido de AST no ve lo que
+    miles() DEVUELVE.
+
+    Hasta 1.4.0 miles() daba «19 568,0», que es la convencion del
+    espanol pero se pega mal en un campo de extension de QGIS. Si
+    alguien la restituye, la frase de la ayuda queda mintiendo y ningun
+    barrido de formato lo nota.
+    """
+    t = _leer(copia, 'core.py')
+    ancla = "return texto.replace(',', ESPACIO_FINO)"
+    assert ancla in t, 'cambio la implementacion de miles()'
+    roto = t.replace(
+        ancla,
+        "return (texto.replace(',', '\\x00').replace('.', ',')\n"
+        "                 .replace('\\x00', ESPACIO_FINO))", 1)
+    _escribir(copia, 'core.py', roto)
+    _, datos = _correr(copia)
+    assert _dice(datos, 'miles()'), _bloqueantes(datos)
+
+
+def test_detecta_un_panel_de_ayuda_que_no_declara_la_convencion(copia):
+    """Cuatro paneles, una sola frase. El que se olvide, se nota."""
+    t = _leer(copia, 'google_earth_algoritmo.py')
+    assert 'f"{NOTA_NUMEROS}"' in t, 'cambio la forma de citar la nota'
+    _escribir(copia, 'google_earth_algoritmo.py',
+              t.replace('f"{NOTA_NUMEROS}"', '"Los numeros salen como salen."',
+                        1))
+    _, datos = _correr(copia)
+    assert _dice(datos, 'NOTA_NUMEROS'), _bloqueantes(datos)
+
+
+def test_detecta_una_nota_que_ya_no_nombra_la_convencion(copia):
+    """Que los cuatro paneles la citen no basta si la frase se vacia."""
+    t = _leer(copia, 'core.py')
+    assert "'Punto (.) para los decimales" in t, 'cambio el texto de la nota'
+    roto = t.replace("'Punto (.) para los decimales y espacio para los ",
+                     "'Las cifras se muestran formateadas y espacio x los ", 1)
+    _escribir(copia, 'core.py', roto)
+    _, datos = _correr(copia)
+    assert _dice(datos, 'declara la convencion'), _bloqueantes(datos)
+
+
+def test_detecta_una_coma_decimal_escrita_a_mano(copia):
+    """La mitad que ningun barrido de FORMATO puede ver.
+
+    Habia cuatro, y «SAVI — ... (L=0,5)» era la peligrosa: ensenaba la
+    convencion equivocada dos parametros antes de «Limites fijos
+    min,max», que parte la entrada por la coma.
+    """
+    t = _leer(copia, 'buscar_sentinel2_provider.py')
+    t += ('\n\ndef _roto(feedback):\n'
+          '    feedback.pushInfo("El umbral por omision es 0,5 en potencia")\n')
+    _escribir(copia, 'buscar_sentinel2_provider.py', t)
+    _, datos = _correr(copia)
+    assert _dice(datos, 'coma decimal'), _bloqueantes(datos)
+
+
+def test_la_coma_que_separa_dos_numeros_en_code_no_dispara(copia):
+    """Control negativo, y el motivo de la exencion.
+
+    «Limites fijos min,max» se escribe <code>-0.1,0.5</code>: ahi la
+    coma SEPARA los dos numeros a proposito. Sin la exencion, la propia
+    ayuda que explica la convencion bloquearia el ZIP.
+    """
+    t = _leer(copia, 'buscar_sentinel2_algoritmo.py')
+    assert '<code>-0.1,0.5</code>' in t, 'cambio el ejemplo de la ayuda'
+    _, datos = _correr(copia)
+    assert not _dice(datos, 'coma decimal'), _bloqueantes(datos)
+
+
+def test_una_coma_decimal_partida_entre_dos_lineas_tambien_se_ve(copia):
+    """Las cadenas contiguas se unen antes de mirar.
+
+    Un numero puede quedar partido por el salto de linea del fuente
+    --'... es 0' ',5 en potencia ...'-- y entonces ninguna de las dos
+    cadenas contiene por si sola el patron.
+    """
+    t = _leer(copia, 'buscar_sentinel2_provider.py')
+    t += ('\n\ndef _roto(feedback):\n'
+          '    feedback.pushInfo("El umbral por omision es 0"\n'
+          '                      ",5 en potencia")\n')
+    _escribir(copia, 'buscar_sentinel2_provider.py', t)
+    _, datos = _correr(copia)
+    assert _dice(datos, 'coma decimal'), _bloqueantes(datos)

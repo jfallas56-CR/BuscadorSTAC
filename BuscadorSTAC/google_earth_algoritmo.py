@@ -41,9 +41,15 @@ LO QUE NO HACE
 
 Autor    : Jorge Fallas (jfallas56@gmail.com)
 Licencia : GPL v2 o posterior
-Versión  : 1.4.0
+Versión  : 1.5.0
 
 Historial:
+    1.5.0 (2026-10-12): Una sola convención numérica, declarada en la
+        ayuda: espacio de millar, PUNTO decimal, coma en ningún papel.
+        Revierte a propósito la decisión de 1.0.5 que está más abajo.
+        Aquí estaba el defecto que lo motivó: los topes de Earth Web
+        salían como «10,000» y «250,000» con la coma de millar del
+        inglés, que leída en español es diez y doscientos cincuenta.
     1.0.5 (2026-10-07): Un mapa base remoto sin «área a exportar» se
         RECHAZA en la validación, en vez de avisar cuando el archivo
         ya estaba escrito. Corregido además un aviso que se comía las
@@ -99,7 +105,7 @@ from qgis.core import (QgsCoordinateReferenceSystem,
                        QgsWkbTypes)
 
 from .buscar_sentinel2_algoritmo import AUTOR, AUTOR_EMAIL, _STR
-from .core import (TOPE_ENTIDADES_WEB, TOPE_VERTICES_WEB,
+from .core import (NOTA_NUMEROS, TOPE_ENTIDADES_WEB, TOPE_VERTICES_WEB,
                    capa_a_promover, contar_kml,
                    es_proveedor_remoto, extension_sospechosa,
                    fecha_kml, href_inseguro,
@@ -123,7 +129,7 @@ FORMATOS_IMAGEN = ['PNG (conserva transparencia)', 'JPEG (menos peso)']
 class ExportarGoogleEarthAlgorithm(QgsProcessingAlgorithm):
     """Capa ráster o vectorial a KMZ, y abrirlo en Google Earth."""
 
-    VERSION = 'v1.4.0'
+    VERSION = 'v1.5.0'
 
     CAPA = 'CAPA'
     CAMPO_FECHA = 'CAMPO_FECHA'
@@ -222,14 +228,17 @@ class ExportarGoogleEarthAlgorithm(QgsProcessingAlgorithm):
             "conviene saber que el KMZ no está en el SRC del original.<br>"
             "<br>"
             "<b>Límites de Earth Web</b><br>"
-            f"Por encima de {TOPE_ENTIDADES_WEB:,} entidades o "
-            f"{TOPE_VERTICES_WEB:,} vértices, Earth Web importa el archivo "
+            f"Por encima de {miles(TOPE_ENTIDADES_WEB)} entidades o "
+            f"{miles(TOPE_VERTICES_WEB)} vértices, Earth Web importa el "
+            "archivo "
             "como capa de datos de solo lectura en lugar de como elementos "
             "editables. Se ve igual; cambia lo que puede hacer con él. El "
             "algoritmo avisa si su capa pasa de ahí.<br><br>"
             "<b>Privacidad</b><br>"
             "No se sube nada a ningún servidor y no hace falta cuenta de "
-            "Google. El KMZ queda en su disco."
+            "Google. El KMZ queda en su disco.<br><br>"
+            "<b>Números</b><br>"
+            f"{NOTA_NUMEROS}"
             "<hr>"
             f"<b>Autor:</b> {AUTOR} &lt;{AUTOR_EMAIL}&gt;<br>"
             f"<b>Versión:</b> {self.VERSION} · <b>Licencia:</b> GPL v2 o "
@@ -1098,20 +1107,22 @@ class ExportarGoogleEarthAlgorithm(QgsProcessingAlgorithm):
                 f"Contiene {cuenta['superposiciones']} superposición(es) de "
                 f"terreno (imagen pegada al relieve).")
         if cuenta['marcadores']:
-            feedback.pushInfo(f"Contiene {cuenta['marcadores']} "
+            feedback.pushInfo(f"Contiene {miles(cuenta['marcadores'])} "
                               f"marcador(es).")
             if cuenta['marcadores'] > TOPE_ENTIDADES_WEB:
                 feedback.pushWarning(
-                    f"[!] {cuenta['marcadores']:,} entidades pasan del tope "
-                    f"de {TOPE_ENTIDADES_WEB:,} de Google Earth Web: allí el "
+                    f"[!] {miles(cuenta['marcadores'])} entidades pasan del "
+                    f"tope de {miles(TOPE_ENTIDADES_WEB)} de Google Earth "
+                    f"Web: allí el "
                     f"archivo entrará como capa de datos de SOLO LECTURA en "
                     f"vez de como elementos editables. Se ve igual; cambia "
                     f"lo que puede hacer con él. El Earth de escritorio no "
                     f"tiene ese tope.")
         if cuenta['vertices'] > TOPE_VERTICES_WEB:
             feedback.pushWarning(
-                f"[!] La geometría lleva {cuenta['vertices']:,} vértices, "
-                f"por encima del tope de {TOPE_VERTICES_WEB:,} de Earth "
+                f"[!] La geometría lleva {miles(cuenta['vertices'])} "
+                f"vértices, por encima del tope de "
+                f"{miles(TOPE_VERTICES_WEB)} de Earth "
                 f"Web. Si lo va a usar allí, simplifique la capa antes "
                 f"(Vectorial -> Herramientas de geometría -> Simplificar).")
 

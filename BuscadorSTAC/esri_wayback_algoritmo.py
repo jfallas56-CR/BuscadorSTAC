@@ -66,7 +66,7 @@ Para productos vectoriales derivados destinados a reporte oficial, conviene
 confirmarlo por escrito. El algoritmo muestra este aviso en cada ejecución.
 
 Autor  : Jorge Fallas (jfallas56@gmail.com)
-Versión: 1.4.0
+Versión: 1.5.0
 Licencia: GPL v2 o posterior
 """
 
@@ -109,6 +109,7 @@ from osgeo import gdal
 
 from .buscar_sentinel2_algoritmo import (
     AUTOR, AUTOR_EMAIL, _POSTPROCESADORES, _TIPO_POLIGONO, _registrar_postproc)
+from .core import NOTA_NUMEROS
 
 # --------------------------------------------------------------- servicios
 CONFIG_URL = ('https://s3-us-west-2.amazonaws.com/'
@@ -279,7 +280,7 @@ def _fecha_epoch(valor):
 class EsriWaybackAlgorithm(QgsProcessingAlgorithm):
     """World Imagery actual e histórico (Wayback) recortado al AOI."""
 
-    VERSION = 'v1.4.0'
+    VERSION = 'v1.5.0'
 
     AOI = 'AOI'
     EXTENSION = 'EXTENSION'
@@ -426,7 +427,10 @@ class EsriWaybackAlgorithm(QgsProcessingAlgorithm):
             "<b>Nota para QGIS:</b> el servicio de Wayback responde con "
             "redirecciones relativas que algunas versiones de QGIS no "
             "resuelven (incidencia qgis/QGIS#54161); si una capa XYZ sale en "
-            "blanco, esa es la causa y el modo de descarga la evita.<hr>"
+            "blanco, esa es la causa y el modo de descarga la evita.<br><br>"
+            "<b>Números</b><br>"
+            f"{NOTA_NUMEROS}"
+            "<hr>"
             f"<b>Autor:</b> {AUTOR} &lt;{AUTOR_EMAIL}&gt;<br>"
             f"<b>Versión:</b> {self.VERSION} · <b>Licencia del código:</b> "
             f"GPL v2 o posterior<br>"
@@ -494,7 +498,7 @@ class EsriWaybackAlgorithm(QgsProcessingAlgorithm):
             defaultValue=1.0, minValue=0.15, maxValue=150.0)
         p.setHelp(self.tr(
             'Determina el nivel de zoom de las teselas. 1 m es un buen punto '
-            'de partida para fotointerpretación general; 0,3 m aprovecha el '
+            'de partida para fotointerpretación general; 0.3 m aprovecha el '
             'máximo '
             'detalle donde exista, a costa de descargar dieciséis veces más '
             'teselas. Pedir más detalle del que tiene la imagen original no '
