@@ -25,7 +25,7 @@ cambió ni una línea de ellos.
 
 Autor    : Jorge Fallas (jfallas56@gmail.com)
 Licencia : GPL v2 o posterior
-Versión  : 1.6.1
+Versión  : 1.7.0
 """
 
 import datetime
@@ -777,12 +777,44 @@ footer { margin-top: 2.5rem; color: #5a6570; font-size: .85rem;
 """
 
 
-def informe_html(datos):
-    """Informe de auditoría de un lote, en HTML autocontenido.
+def _documento_html(titulo, partes, generado, generado_por, avisos=(),
+                    pie=''):
+    """Envoltorio común de los informes: cabecera, avisos, CSS y pie.
+
+    Sale de informe_html() para que el informe de índices use el MISMO
+    documento en vez de una copia que se va separando. El CSS vive en
+    una sola cadena por la misma razón.
 
     Sin dependencias: ni plotly ni CDN ni fuentes remotas. Un informe de
     auditoría tiene que poder abrirse dentro de diez años y en una
     máquina sin red, que es justo cuando hace falta.
+    """
+    bloque_avisos = ''.join(
+        f'<div class="aviso">{_esc(a)}</div>\n' for a in (avisos or ()))
+    titulo = _esc(titulo or 'Informe')
+    return (
+        '<!DOCTYPE html>\n<html lang="es">\n<head>\n'
+        '<meta charset="utf-8">\n'
+        '<meta name="viewport" content="width=device-width, '
+        'initial-scale=1">\n'
+        f'<title>{titulo}</title>\n<style>{_CSS_INFORME}</style>\n'
+        '</head>\n<body>\n'
+        f'<h1>{titulo}</h1>\n'
+        f'<p class="sub">Generado {_esc(generado)} por '
+        f'{_esc(generado_por)}</p>\n'
+        f'{bloque_avisos}'
+        + ''.join(partes) +
+        f'<footer>{_esc(pie)}</footer>\n'
+        '</body>\n</html>\n')
+
+
+_PIE_AUDITORIA = (
+    'Informe de auditoría: registra con qué datos y con qué parámetros se '
+    'produjo cada archivo, para poder repetirlo o revisarlo más tarde.')
+
+
+def informe_html(datos):
+    """Informe de auditoría de un lote, en HTML autocontenido.
 
     Vive en core.py --y no en el algoritmo-- porque es construccion de
     texto y se prueba sin QGIS.
@@ -809,26 +841,160 @@ def informe_html(datos):
         _tabla_html('Entorno', datos.get('entorno') or []),
         _tabla_html('Fuentes y licencias', datos.get('fuentes') or []),
     ]
-    avisos = ''.join(
-        f'<div class="aviso">{_esc(a)}</div>\n'
-        for a in (datos.get('avisos') or []))
-    titulo = _esc(datos.get('titulo') or 'Informe')
-    return (
-        '<!DOCTYPE html>\n<html lang="es">\n<head>\n'
-        '<meta charset="utf-8">\n'
-        '<meta name="viewport" content="width=device-width, '
-        'initial-scale=1">\n'
-        f'<title>{titulo}</title>\n<style>{_CSS_INFORME}</style>\n'
-        '</head>\n<body>\n'
-        f'<h1>{titulo}</h1>\n'
-        f'<p class="sub">Generado {_esc(datos.get("generado"))} por '
-        f'{_esc(datos.get("generado_por"))}</p>\n'
-        f'{avisos}'
-        + ''.join(partes) +
-        '<footer>Informe de auditoría: registra con qué datos y con qué '
-        'parámetros se produjo cada archivo, para poder repetirlo o '
-        'revisarlo más tarde.</footer>\n'
-        '</body>\n</html>\n')
+    return _documento_html(
+        datos.get('titulo') or 'Informe', partes,
+        datos.get('generado'), datos.get('generado_por'),
+        datos.get('avisos') or [], _PIE_AUDITORIA)
+
+
+# --------------------------------------------------------------------------
+# Informe de índices: dónde cae un valor DENTRO de la escena del usuario
+# --------------------------------------------------------------------------
+def estadisticas_indice(valores):
+    """Distribución de un índice ya enmascarado: dónde cae cada valor.
+
+    Es la respuesta a la pregunta que el usuario tiene de verdad frente a
+    un ráster gris --«¿0.45 es alto o bajo aquí?»--, y la unica forma
+    honesta de contestarla: con SU escena, no con una tabla ajena.
+
+    Se calcula sobre el subconjunto FINITO y con np.percentile, no con
+    las funciones nan*. No es un detalle de estilo: «All-NaN slice
+    encountered» lo emite warnings.warn, que np.errstate NO silencia, y
+    sobre un recorte enteramente nublado saldria una vez por llamada.
+    Filtrando antes, el caso vacio se contesta sin warning y sin rama de
+    excepcion.
+    """
+    arr = np.asarray(valores, dtype='float64').ravel()
+    total = int(arr.size)
+    finitos = arr[np.isfinite(arr)]
+    n = int(finitos.size)
+    if not n:
+        return {'n': 0, 'total': total, 'pct': 0.0, 'min': None, 'p2': None,
+                'p25': None, 'mediana': None, 'p75': None, 'p98': None,
+                'max': None}
+    p2, p25, p50, p75, p98 = (
+        float(v) for v in np.percentile(finitos, [2, 25, 50, 75, 98]))
+    return {'n': n, 'total': total,
+            'pct': 100.0 * n / total if total else 0.0,
+            'min': float(finitos.min()), 'p2': p2, 'p25': p25,
+            'mediana': p50, 'p75': p75, 'p98': p98,
+            'max': float(finitos.max())}
+
+
+# Rangos ORIENTATIVOS de NDVI por tipo de cubierta.
+#
+# Tres decisiones, y las tres son por lo que esta tabla NO va a ser:
+#
+#  1. Pocas filas y anchas, no diez tajadas iguales. Una tabla de diez
+#     rangos promete una resolucion que el indice no tiene.
+#  2. La ambiguedad en SU PROPIA COLUMNA. Las tablas que circulan la
+#     entierran en un «o» --«cobertura media-baja, vigor bajo O cobertura
+#     baja, vigor alto»--, y quien buscaba una consulta lee la primera
+#     rama y para. El NDVI confunde CANTIDAD de cubierta con ESTADO de la
+#     cubierta, y eso tiene que estar en la misma linea que el numero.
+#  3. Solo NDVI. Para los otros diez indices no circulan rangos
+#     comparables, e inventarlos seria peor que no tenerlos.
+#
+# No se cita fuente porque no se tiene una verificada, y eso se dice en
+# el informe en vez de atribuirlas a una autoridad que no se comprobo:
+# este complemento acaba de retirar una cifra por ese mismo motivo.
+RANGOS_NDVI = (
+    ('Agua libre, sombra profunda', None, 0.0,
+     'Nube no enmascarada, nieve'),
+    ('Suelo desnudo, roca, arena, superficie construida', 0.0, 0.2,
+     'Vegetación seca o senescente'),
+    ('Herbácea rala, cultivo recién emergido', 0.2, 0.4,
+     'Cubierta densa con vigor bajo'),
+    ('Cultivo en desarrollo, pasto en crecimiento', 0.4, 0.6,
+     'Cubierta rala con vigor alto'),
+    ('Cultivo cerrado, pasto vigoroso, regeneración', 0.6, 0.8,
+     'Cubierta media con vigor muy alto'),
+    ('Dosel cerrado', 0.8, None,
+     'Zona de saturación: el NDVI deja de resolver dentro de este tramo. '
+     'Para separar ahí, use EVI2'),
+)
+
+
+def _rango_texto(lo, hi):
+    """«< 0.0», «0.0 – 0.2» o «> 0.8», con la convención del complemento."""
+    if lo is None:
+        return f'< {hi:.1f}'
+    if hi is None:
+        return f'> {lo:.1f}'
+    return f'{lo:.1f} – {hi:.1f}'
+
+
+def _filas_rangos_ndvi():
+    return [(_rango_texto(lo, hi), cubierta, tambien or '—')
+            for cubierta, lo, hi, tambien in RANGOS_NDVI]
+
+
+COLS_DISTRIBUCION = ('Índice', 'Escena', 'Píxeles válidos', '% válidos',
+                     'Mín', 'p2', 'p25', 'Mediana', 'p75', 'p98', 'Máx')
+
+
+def _fila_estadisticas(indice, escena, est):
+    """Una fila de la tabla de distribución, ya formateada.
+
+    Tiene que medir exactamente len(COLS_DISTRIBUCION). Una fila corta no
+    da error en ningun sitio: _tabla_cols_html la escribe igual y la
+    tabla sale descuadrada en el informe, con los numeros bajo la columna
+    de al lado. Hay una prueba que compara las dos longitudes, en los dos
+    caminos --con datos y sin ellos--, porque el camino vacio es el que
+    no se ve al revisar un informe normal.
+    """
+    if not est['n']:
+        return ([indice, escena, '0', '0.0'] +
+                ['—'] * (len(COLS_DISTRIBUCION) - 4))
+    return [indice, escena, miles(est['n']), f"{est['pct']:.1f}",
+            f"{est['min']:.3f}", f"{est['p2']:.3f}", f"{est['p25']:.3f}",
+            f"{est['mediana']:.3f}", f"{est['p75']:.3f}",
+            f"{est['p98']:.3f}", f"{est['max']:.3f}"]
+
+
+def informe_indices_html(datos):
+    """Informe de los índices escritos: su distribución, escena por escena.
+
+    Vive en core.py por la misma razón que informe_html: es construcción
+    de texto y se prueba sin QGIS. Comparte con él el documento y el CSS.
+    """
+    filas = datos.get('distribucion') or []
+    partes = [
+        _tabla_cols_html(
+            'Distribución de cada índice', COLS_DISTRIBUCION, filas,
+            'Sobre los píxeles válidos de SU recorte, descontados nube, '
+            'sombra de nube y sin dato. Es lo que contesta «¿0.45 es alto '
+            'o bajo aquí?»: alto o bajo respecto a esta escena, que es la '
+            'única comparación que no depende de una tabla ajena. Los '
+            'percentiles 2 y 98 son los mismos que usa el realce de la '
+            'simbología, así que explican el color que ve en el lienzo.'),
+        _tabla_cols_html(
+            'Rangos orientativos de NDVI',
+            ('NDVI', 'Cubierta típica', 'Pero también puede ser'),
+            _filas_rangos_ndvi(),
+            'ORIENTATIVOS, y nada más: no son una clasificación publicada '
+            'ni se derivaron de su área. La tercera columna es la razón: '
+            'el NDVI confunde cuánta cubierta hay con en qué estado está, '
+            'de modo que un mismo valor admite dos lecturas. Los límites '
+            'se mueven además con el sensor (una banda roja de Landsat no '
+            'es la de Sentinel-2), con la corrección atmosférica, con la '
+            'fenología y con la geometría de iluminación. Para decidir '
+            'clases use la tabla de arriba, que es de su escena, y verdad '
+            'de campo. Solo se dan para NDVI: para los demás índices no '
+            'circulan rangos comparables e inventarlos sería peor que no '
+            'tenerlos.'),
+        _tabla_html('Parámetros de la ejecución', datos.get('parametros')
+                    or []),
+        _tabla_html('Entorno', datos.get('entorno') or []),
+        _tabla_html('Fuentes y licencias', datos.get('fuentes') or []),
+    ]
+    return _documento_html(
+        datos.get('titulo') or 'Índices espectrales', partes,
+        datos.get('generado'), datos.get('generado_por'),
+        datos.get('avisos') or [],
+        'Dónde cae cada valor dentro de su propia escena. Un índice no '
+        'es una clase: la correspondencia la decide el área de estudio y '
+        'la verdad de campo.')
 
 
 _RE_FECHA_KML = re.compile(

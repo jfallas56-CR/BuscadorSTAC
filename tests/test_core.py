@@ -1511,3 +1511,163 @@ def test_evi2_no_se_acota_con_el_rango_del_ndvi():
     out = core._acotar_indice('EVI2', np.array([0.63, 1.40, 2.60]), fb)
     assert np.isfinite(out[0]) and np.isfinite(out[1])
     assert np.isnan(out[2]), 'por encima de la ganancia no es una medida'
+
+
+# --------------------------------------------------------------------------
+# Informe de distribucion de indices
+# --------------------------------------------------------------------------
+def test_estadisticas_indice_describe_la_distribucion():
+    v = np.array([0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
+    e = core.estadisticas_indice(v)
+    assert e['n'] == 10 and e['total'] == 10
+    assert abs(e['pct'] - 100.0) < 1e-9
+    assert e['min'] == 0.0 and e['max'] == 0.9
+    assert abs(e['mediana'] - 0.45) < 1e-9
+    assert e['p25'] < e['mediana'] < e['p75']
+    assert e['p2'] < e['p25'] and e['p75'] < e['p98']
+
+
+def test_estadisticas_indice_descuenta_los_nan():
+    """El porcentaje es sobre el total, no sobre los validos.
+
+    Es lo que convierte el numero en informacion: «0.45 es la mediana»
+    dice poco si no se sabe que solo el 40 % del recorte tenia dato.
+    """
+    v = np.array([0.2, np.nan, 0.4, np.nan, 0.6, np.nan, np.nan, np.nan,
+                  np.nan, np.nan])
+    e = core.estadisticas_indice(v)
+    assert e['n'] == 3 and e['total'] == 10
+    assert abs(e['pct'] - 30.0) < 1e-9
+    assert e['min'] == 0.2 and e['max'] == 0.6
+    assert abs(e['mediana'] - 0.4) < 1e-9
+
+
+def test_estadisticas_indice_con_todo_nan_no_avisa_ni_revienta(recwarn):
+    """El recorte enteramente nublado, que es un caso REAL.
+
+    Y sin warning: «All-NaN slice encountered» lo emite warnings.warn,
+    que np.errstate NO silencia, y ya se pago una vez con nanmedian
+    emitiendolo una vez por columna. Se calcula sobre el subconjunto
+    finito justamente para que este caso no tenga que silenciarse.
+    """
+    e = core.estadisticas_indice(np.full(40, np.nan))
+    assert e['n'] == 0 and e['total'] == 40 and e['pct'] == 0.0
+    assert e['mediana'] is None and e['min'] is None
+    assert not [w for w in recwarn
+                if 'All-NaN' in str(w.message)], [str(w.message)
+                                                  for w in recwarn]
+
+
+def test_estadisticas_indice_acepta_un_arreglo_2d():
+    """Como llega de verdad: una malla, no un vector."""
+    e = core.estadisticas_indice(np.arange(100, dtype='float64').reshape(10, 10))
+    assert e['n'] == 100
+    assert abs(e['mediana'] - 49.5) < 1e-9
+
+
+def test_la_fila_de_distribucion_cuadra_con_sus_cabeceras():
+    """Una fila corta NO da error: la tabla sale descuadrada en el
+    informe, con los numeros bajo la columna de al lado.
+
+    Se comprueban los dos caminos. El vacio es el que no se ve al
+    revisar un informe normal, y es el que ya estaba mal: devolvia diez
+    celdas para once cabeceras.
+    """
+    n = len(core.COLS_DISTRIBUCION)
+    con_datos = core._fila_estadisticas(
+        'NDVI', '2026-01-14', core.estadisticas_indice(np.linspace(0, 1, 50)))
+    sin_datos = core._fila_estadisticas(
+        'NDMI', '2026-09-30', core.estadisticas_indice(np.full(50, np.nan)))
+    assert len(con_datos) == n, (len(con_datos), n)
+    assert len(sin_datos) == n, (len(sin_datos), n)
+
+
+def test_los_rangos_de_ndvi_son_contiguos_y_con_ambiguedad():
+    """La tabla orientativa, como estructura.
+
+    Dos exigencias de diseno, y las dos son por lo que la tabla NO debe
+    ser: pocas filas y anchas --diez tajadas iguales prometen una
+    resolucion que el indice no tiene-- y la ambiguedad en su propia
+    columna, no enterrada en un «o».
+    """
+    assert len(core.RANGOS_NDVI) <= 7, 'pocas filas y anchas, no diez'
+    # Contiguos y sin huecos: el limite superior de cada fila es el
+    # inferior de la siguiente.
+    for (_, _, hi, _), (_, lo2, _, _) in zip(core.RANGOS_NDVI,
+                                             core.RANGOS_NDVI[1:]):
+        assert hi == lo2, (hi, lo2)
+    # Abiertos en los dos extremos: un NDVI no esta acotado por la tabla.
+    assert core.RANGOS_NDVI[0][1] is None
+    assert core.RANGOS_NDVI[-1][2] is None
+    # Y la saturacion, dicha donde ocurre.
+    assert 'satura' in core.RANGOS_NDVI[-1][3].lower()
+    # Casi todas con lectura alternativa declarada.
+    con_ambiguedad = sum(1 for f in core.RANGOS_NDVI if f[3])
+    assert con_ambiguedad >= len(core.RANGOS_NDVI) - 1
+
+
+def test_el_informe_de_indices_es_autocontenido_y_dice_lo_que_debe():
+    html = core.informe_indices_html({
+        'titulo': 'Índices espectrales — distribución',
+        'generado': '2026-10-12T18:40:00Z',
+        'generado_por': 'BuscadorSTAC v1.7.0',
+        'distribucion': [core._fila_estadisticas(
+            'NDVI', '2026-01-14',
+            core.estadisticas_indice(np.linspace(0, 1, 100)))],
+        'parametros': [('Sensor', 'Sentinel-2')],
+        'entorno': [('GDAL', '3.8.4')],
+        'fuentes': [('Sentinel-2', 'ESA, acceso abierto')],
+    })
+    # Autocontenido: ni CDN ni fuentes remotas. Un informe se abre
+    # cuando hace falta, y entonces puede no haber red.
+    assert 'http://' not in html and 'https://' not in html
+    assert '<!DOCTYPE html>' in html and html.rstrip().endswith('</html>')
+    # Las dos tablas, y en este orden: primero la escena del usuario.
+    i_dist = html.index('Distribución de cada índice')
+    i_rangos = html.index('Rangos orientativos')
+    assert i_dist < i_rangos, 'los percentiles del usuario van primero'
+    # Y los rangos tienen que decir que son orientativos, no una
+    # clasificacion: es toda la diferencia con la tabla que no se puso.
+    assert 'ORIENTATIVOS' in html
+    assert 'no son una clasificación publicada' in html
+    assert 'verdad de campo' in html
+
+
+def test_el_informe_de_indices_no_pierde_el_caso_vacio():
+    """Un indice sin pixeles validos tiene que SALIR en el informe.
+
+    Omitirlo lo haria indistinguible de un indice que no se pidio.
+    """
+    html = core.informe_indices_html({
+        'titulo': 'T', 'generado': 'G', 'generado_por': 'P',
+        'distribucion': [core._fila_estadisticas(
+            'NDMI', '2026-09-30', core.estadisticas_indice(np.full(9, np.nan)))],
+    })
+    assert 'NDMI' in html and '2026-09-30' in html
+
+
+def test_el_informe_del_radar_sigue_igual_tras_compartir_el_documento():
+    """El envoltorio se saco de informe_html para que el informe de
+    indices use el MISMO documento. Esta prueba fija que el del radar no
+    cambio al hacerlo: es un refactor, no un rediseno.
+    """
+    datos = {
+        'titulo': 'Informe «Río Frío» & anexo',
+        'generado': '2026-10-12T18:20:00Z', 'generado_por': 'BuscadorSTAC',
+        'avisos': ['Faltan 3 escenas <ver abajo>'],
+        'lote': [('Identificador', 'L-001')],
+        'parametros': [('Resolución', '20 m')],
+        'productos': [('AMPL_VH', 'a.tif', '-0.6', '0.4', '0.02', '94.1')],
+        'escenas': [('seca', '12', '2025-12-03')],
+        'entorno': [('GDAL', '3.8.4')],
+        'fuentes': [('Sentinel-1', 'ESA')],
+    }
+    html = core.informe_html(datos)
+    assert '<!DOCTYPE html>' in html
+    assert 'Informe de auditoría: registra con qué datos' in html
+    # El escapado tiene que seguir activo en titulo y celdas.
+    assert '&amp;' in html and '&lt;ver abajo&gt;' in html
+    for seccion in ('Lote', 'Parámetros de la ejecución',
+                    'Productos escritos', 'Escenas usadas', 'Entorno',
+                    'Fuentes y licencias'):
+        assert seccion in html, seccion

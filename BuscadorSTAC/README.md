@@ -1,6 +1,6 @@
 # Buscador STAC: Sentinel, Landsat y Esri Wayback
 
-![version](https://img.shields.io/badge/version-1.6.1-blue)
+![version](https://img.shields.io/badge/version-1.7.0-blue)
 ![QGIS](https://img.shields.io/badge/QGIS-%E2%89%A5%203.28-green)
 ![licencia](https://img.shields.io/badge/licencia-GPL%20v2%2B-orange)
 
@@ -175,6 +175,28 @@ que sugerían longitudes de onda distintas.
   lugar de su estado en una fecha, y por eso separa coberturas que un índice de
   una sola imagen confunde. Qué clase corresponde a cada rango lo decide el área
   de estudio y la verdad de campo, no el índice.
+- **Informe de distribución** (`indices_distribucion.html`), escrito junto a
+  los GeoTIFF. Para cada índice y escena: píxeles válidos, % válidos, mínimo,
+  p2, p25, mediana, p75, p98 y máximo, sobre los píxeles que sobrevivieron a
+  la máscara. Incluye las capas de amplitud.
+
+  Existe porque un ráster gris no dice si un valor es alto. **¿0.45 es alto o
+  bajo?** Depende de la escena, y la escena es justo lo que el informe mide.
+  Los percentiles 2 y 98 son los mismos que usa el realce de la simbología,
+  así que explican el color que ve en el lienzo.
+
+  El informe trae además **rangos orientativos de NDVI** por tipo de cubierta.
+  Son pocos y anchos a propósito: una tabla de diez rangos iguales promete una
+  resolución que el índice no tiene, y sus tramos altos caen en la zona de
+  saturación, donde menos resuelve. Cada tramo lleva su **lectura
+  alternativa** en una columna propia, porque el NDVI confunde *cuánta*
+  cubierta hay con *en qué estado* está y un mismo valor admite dos lecturas
+  — las tablas que circulan entierran eso en un «o» y quien buscaba una
+  consulta lee la primera rama y para. No son una clasificación publicada ni
+  se derivaron de su área: para decidir clases valen la tabla de su escena y
+  la verdad de campo. Y solo se dan para NDVI, porque para los demás índices
+  no circulan rangos comparables e inventarlos sería peor que no tenerlos.
+
 - Recuento de observaciones válidas por píxel y estación (capa `_NOBS`), con
   umbral mínimo configurable: un píxel sustentado en una sola observación no
   entra en el resultado.
@@ -638,6 +660,7 @@ Copyright © 2026 Jorge Fallas <jfallas56@gmail.com>
 
 | Versión | Fecha | Cambios |
 |---|---|---|
+| 1.7.0 | 2026-10-12 | **Informe de distribución** (`indices_distribucion.html`): percentiles de cada índice y escena sobre los píxeles válidos del recorte, para saber si un valor es alto o bajo **ahí** en vez de consultarlo en una tabla ajena. Con rangos orientativos de NDVI por cubierta, pocos y anchos, con la lectura alternativa de cada tramo en su propia columna y la zona de saturación dicha donde ocurre. |
 | 1.6.1 | 2026-10-12 | Se retira de la ayuda de Esri Wayback la cifra «medido sobre un lote de Guanacaste, 5 de 196»: de esa medición no queda rastro, y «medido» afirma un experimento. Se conserva el mecanismo —sobre un lote pequeño quedan unas pocas versiones y no doscientas— y la ayuda remite al modo «Listar», que da el número sobre el área del usuario. |
 | 1.6.0 | 2026-10-12 | **EVI2** (Jiang et al. 2008), once índices: vigor que no se satura en cubierta densa, donde el NDVI deja de informar. Es el único con coeficientes calibrados, así que lleva su procedencia y la suposición en la que se apoya (razón rojo/azul 2.08). Y el texto deja de presentar el complemento como herramienta de Costa Rica: el flujo con nubosidad alta y los meses de estación valen para cualquier región. Lo que se queda es decir cuál es el valor **por omisión**. |
 | 1.5.0 | 2026-10-12 | **Una sola convención numérica, y declarada**: punto decimal, espacio de millar, coma en ningún papel. Convivían tres. Corrige dos defectos reales: los topes de Earth Web salían como «10,000» (que leído en español es diez) y la etiqueta de SAVI enseñaba `L=0,5` dos parámetros antes de «Límites fijos mín,máx», que parte su entrada por la coma y lee `0,5` como el rango 0–5 sin dar error. |

@@ -1,6 +1,6 @@
 # BuscadorSTAC
 
-![version](https://img.shields.io/badge/version-1.6.1-blue)
+![version](https://img.shields.io/badge/version-1.7.0-blue)
 ![QGIS](https://img.shields.io/badge/QGIS-3.28%20–%204.x-green)
 ![licencia](https://img.shields.io/badge/licencia-GPL%20v2%2B-blue)
 
@@ -65,7 +65,7 @@ también en el menú Complementos → Buscador STAC.
 
 | Algoritmo | Qué hace |
 |---|---|
-| **Buscar y descargar Sentinel-2 / Landsat (STAC / COG)** | Consulta catálogos STAC públicos (Element84 Earth Search, Microsoft Planetary Computer). Capa de huellas con metadatos, hoja de contactos HTML, nubosidad medida dentro del AOI con SCL o QA_PIXEL, carga remota por `/vsicurl/` o recorte a disco, ocho composiciones RGB, once índices espectrales y **amplitud fenológica estacional** (seca − lluviosa sobre los índices ópticos). |
+| **Buscar y descargar Sentinel-2 / Landsat (STAC / COG)** | Consulta catálogos STAC públicos (Element84 Earth Search, Microsoft Planetary Computer). Capa de huellas con metadatos, hoja de contactos HTML, nubosidad medida dentro del AOI con SCL o QA_PIXEL, carga remota por `/vsicurl/` o recorte a disco, ocho composiciones RGB, once índices espectrales con **informe de distribución** (percentiles de cada índice sobre el propio recorte) y **amplitud fenológica estacional** (seca − lluviosa sobre los índices ópticos). |
 | **Esri World Imagery / Wayback** | Imágenes de alta resolución, actuales e históricas (archivo Wayback desde 2014), recortadas al AOI. Detecta qué versiones cambian de verdad sobre el área y da la fecha de captura real, no la de publicación del mosaico. |
 | **Sentinel-1 RTC (ASF HyP3)** | Radar en banda C corregido por terreno, en tres modos: inventario por traza sin gastar créditos, pedido con confirmación explícita de gasto y comprobación del saldo real, y colecta de datos con **amplitud estacional de retrodispersión** (seca − lluviosa sobre γ⁰, el equivalente radar de la anterior: mismo signo, mismos meses, comparables entre sí). Escribe la amplitud, las dos medianas por estación, el recuento por píxel y un informe HTML de auditoría; puede reproyectar los productos finales al SRC que se indique. |
 | **Exportar a Google Earth (KMZ)** | Convierte la capa elegida a KMZ y la abre en Google Earth de escritorio. Un ráster se renderiza antes con la simbología que usted ve en QGIS, sobre el área que se indique —necesario con un mapa base remoto, que declara extensión mundial—; a una capa vectorial se le puede indicar un campo de fecha y sale con línea de tiempo. |

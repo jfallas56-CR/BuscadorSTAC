@@ -27,9 +27,15 @@ No requiere credenciales para Earth Search. Planetary Computer usa un
 token SAS anónimo gratuito que el algoritmo solicita automáticamente.
 
 Autor  : Jorge Fallas (jfallas56@gmail.com)
-Versión: 1.6.1
+Versión: 1.7.0
 
 Historial:
+    1.7.0 (2026-10-12): Informe de distribucion de los indices
+        (indices_distribucion.html): percentiles de cada indice y
+        escena sobre los pixeles validos del recorte, para saber si un
+        valor es alto o bajo AHI. Con rangos orientativos de NDVI por
+        cubierta, pocos y anchos, y con la lectura alternativa de cada
+        tramo en columna propia.
     1.6.0 (2026-10-12): EVI2 (Jiang et al. 2008), vigor que no se satura
         en cubierta densa. Y el texto deja de presentar el complemento
         como herramienta de Costa Rica: el flujo con nubosidad alta y los
@@ -111,8 +117,9 @@ from .core import (
     _periodos_sin_datos, _procedencia_huellas, _reducir_por_periodo,
     _res_nativa, _salida_volatil, _tamano_salida, _validar_ortonormalidad,
     CLAVES_BANDAS, ETIQUETAS_BANDAS, NOTA_NUMEROS, SIN_EQUIVALENTE_LS,
-    alias_banda, bandas_duplicadas, composiciones_vetadas,
-    etiqueta_banda, evi2, sufijo_banda)
+    _fila_estadisticas, alias_banda, bandas_duplicadas, composiciones_vetadas,
+    estadisticas_indice, etiqueta_banda, evi2, informe_indices_html,
+    miles, sufijo_banda)
 
 from osgeo import gdal
 
@@ -1000,7 +1007,7 @@ def _geom_desde_geojson(gj):
 # --------------------------------------------------------------------------
 class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
 
-    VERSION = 'v1.6.1'
+    VERSION = 'v1.7.0'
 
     # Lógica pura, definida en core.py y reenganchada aquí como
     # staticmethod. Así cada sitio de llamada sigue siendo
@@ -1051,6 +1058,8 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
     _pc_coleccion = None
     # Índices escritos: (ruta, mes, sufijo, fecha AAAA-MM-DD).
     _indices_escritos = None
+    # Filas ya formateadas de la tabla de distribución del informe.
+    _dist_indices = None
     # Amplitudes a cargar en postProcessAlgorithm. Ver
     # _cargar_pendientes: addLayerToLoadOnCompletion no las
     # mostraba y no dejaba rastro de por que.
@@ -1203,6 +1212,15 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             "aviso que dice cuántos fueron. Un porcentaje alto indica bandas "
             "corruptas o un escalado mal declarado en el catálogo, no un "
             "resultado a interpretar.<br><br>"
+            "<b>¿Es 0.45 alto o bajo?</b> Junto a los GeoTIFF se escribe "
+            "<code>indices_distribucion.html</code>, con los percentiles de "
+            "cada índice y escena sobre los píxeles válidos de SU recorte. "
+            "Un ráster gris no dice si un valor es alto; su propia escena "
+            "sí, y es la única comparación que no depende de una tabla "
+            "ajena. Trae además rangos <i>orientativos</i> de NDVI por tipo "
+            "de cubierta, con la lectura alternativa de cada tramo al lado: "
+            "el NDVI confunde cuánta cubierta hay con en qué estado está, de "
+            "modo que un mismo valor admite dos lecturas.<br><br>"
             "<b>Si la amplitud sale vacía</b>, el aviso distingue la causa: "
             "una estación entera nublada, «Mínimo de observaciones por píxel» "
             "demasiado alto (indica el valor que sí funcionaría), o escenas "
@@ -1613,6 +1631,19 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             'escalado del sensor, incluido el desplazamiento BOA de la línea '
             'base 04.00 de Sentinel-2 y el desplazamiento aditivo de Landsat '
             'Collection 2, que no se cancelan en un cociente.<br><br>'
+            '<b>Informe de distribución.</b> Junto a los GeoTIFF se escribe '
+            '<code>indices_distribucion.html</code>, con los percentiles de '
+            'cada índice y escena sobre los píxeles válidos de SU recorte: '
+            'mínimo, p2, p25, mediana, p75, p98 y máximo, más cuántos '
+            'píxeles quedaron. Contesta la pregunta que un ráster gris no '
+            'contesta —«¿0.45 es alto o bajo aquí?»— y lo hace con su '
+            'escena, que es la única comparación que no depende de una tabla '
+            'ajena. Los percentiles 2 y 98 son los mismos del realce, así '
+            'que explican el color que ve. Incluye también rangos '
+            '<i>orientativos</i> de NDVI por tipo de cubierta, dichos como '
+            'lo que son: no una clasificación publicada, y con la lectura '
+            'alternativa de cada tramo en su propia columna, porque el NDVI '
+            'confunde cuánta cubierta hay con en qué estado está.<br><br>'
             '<b>Procedencia del EVI2.</b> Es el único de la lista con '
             'coeficientes calibrados, así que conviene saber de dónde salen: '
             'Jiang et al. (2008), <i>Remote Sensing of Environment</i> '
@@ -2243,6 +2274,7 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
         self._coef_tc = TC_COEFICIENTES
         self._escala_reportada = set()
         self._indices_escritos = []
+        self._dist_indices = []
         self._pendientes_amplitud = []
         fuente_sel = self.parameterAsSource(parameters, self.SELECCION, context)
 
@@ -2622,6 +2654,9 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
                     self._amplitud_fenologica(
                         meses_seca, meses_lluvia, carpeta, context,
                         feedback, min_obs)
+                self._escribir_informe_indices(
+                    carpeta, items, indices, amplitud, meses_seca,
+                    meses_lluvia, min_obs, feedback)
             resultados[self.SALIDA] = carpeta
 
         self._resultados = resultados
@@ -3856,6 +3891,103 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             except Exception as e2:
                 feedback.pushDebugInfo(f"[limpieza_msk] {e2}")
 
+    def _escribir_informe_indices(self, carpeta, items, indices, amplitud,
+                                  meses_seca, meses_lluvia, min_obs,
+                                  feedback):
+        """Informe HTML con la distribución de cada índice escrito.
+
+        Contesta la pregunta que el usuario tiene de verdad delante de un
+        ráster gris: «¿0.45 es alto o bajo aquí?». La respuesta honesta
+        es con SU escena, no con una tabla de rangos ajena, y por eso el
+        informe lleva los percentiles de su recorte primero y los rangos
+        orientativos después, dichos como lo que son.
+
+        No se escribe si no hay nada que informar: un informe vacío
+        parece un resultado.
+        """
+        if not self._dist_indices:
+            return
+        try:
+            from qgis.core import Qgis
+            version_qgis = Qgis.QGIS_VERSION
+        except Exception:                            # pragma: no cover
+            version_qgis = '?'
+        fechas = sorted({str(i.get('properties', {}).get('datetime', ''))[:10]
+                         for i in items} - {''})
+        parametros = [
+            ('Sensor', 'Sentinel-2' if self._familia == 's2' else 'Landsat'),
+            ('Escenas', miles(len(items))),
+            ('Rango de fechas',
+             f'{fechas[0]} … {fechas[-1]}' if fechas else '?'),
+            ('Índices pedidos', ', '.join(i[1] for i in indices)),
+            ('Máscara de calidad',
+             'SCL' if self._familia == 's2' else 'QA_PIXEL'),
+        ]
+        if amplitud:
+            parametros += [
+                ('Meses de estación seca', str(meses_seca)),
+                ('Meses de estación lluviosa', str(meses_lluvia)),
+                ('Mínimo de observaciones por píxel', miles(min_obs)),
+            ]
+        datos = {
+            'titulo': 'Índices espectrales — distribución',
+            'generado': datetime.now(timezone.utc).strftime(
+                '%Y-%m-%dT%H:%M:%SZ'),
+            'generado_por': f'BuscadorSTAC {self.VERSION}',
+            'distribucion': list(self._dist_indices),
+            'parametros': parametros,
+            'entorno': [
+                ('QGIS', version_qgis),
+                ('GDAL', gdal.VersionInfo('RELEASE_NAME') if gdal else '?'),
+                ('numpy', np.__version__),
+                ('Complemento', f'BuscadorSTAC {self.VERSION}'),
+                ('Autor', f'{AUTOR} <{AUTOR_EMAIL}>'),
+            ],
+            'fuentes': [
+                ('Sentinel-2',
+                 'Copernicus Sentinel data, procesados por ESA. '
+                 'Acceso abierto.'),
+                ('Landsat Collection 2',
+                 'Cortesía del U.S. Geological Survey / NASA. '
+                 'Dominio público.'),
+            ],
+        }
+        ruta = os.path.join(carpeta, 'indices_distribucion.html')
+        try:
+            with open(ruta, 'w', encoding='utf-8') as fh:
+                fh.write(informe_indices_html(datos))
+        except OSError as e:
+            feedback.pushWarning(
+                f'[_escribir_informe_indices] no se pudo escribir '
+                f'{os.path.basename(ruta)}: {e}')
+            return
+        feedback.pushInfo(
+            f'\nInforme de distribución → {os.path.basename(ruta)}  '
+            f'({miles(len(self._dist_indices))} fila(s)). Dice dónde cae '
+            f'cada valor DENTRO de su escena, que es lo que una tabla de '
+            f'rangos no puede decir.')
+
+    def _anotar_distribucion(self, sufijo, escena, ruta, feedback):
+        """Lee un índice ya escrito y anota su distribución para el informe.
+
+        Es el camino del recorte cacheado. Leerlo cuesta una apertura
+        local, y la alternativa es un informe que se vacía en cuanto el
+        usuario reejecuta sobre archivos que ya tenía.
+        """
+        try:
+            ds = gdal.Open(ruta)
+            if ds is None:
+                return
+            arr = ds.GetRasterBand(1).ReadAsArray()
+            ds = None
+            if arr is None:
+                return
+            self._dist_indices.append(_fila_estadisticas(
+                sufijo, escena or '?',
+                estadisticas_indice(arr.astype('float64'))))
+        except Exception as e:
+            feedback.pushDebugInfo(f'[_anotar_distribucion] {ruta}: {e}')
+
     def _calcular_indices(self, items, indices, token, firmar, bbox, cutline,
                           carpeta, context, feedback, visibles):
         """Escribe un GeoTIFF Float32 por índice y escena, con nube a NaN."""
@@ -3894,6 +4026,13 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
                         self._indices_escritos.append(
                             (destino, mes_item, sufijo,
                              str(props.get('datetime', ''))[:10]))
+                        # Y su distribución se lee del archivo que ya
+                        # está: sin esto, una reejecución sobre recortes
+                        # cacheados daría un informe vacío --otra vez un
+                        # hueco que no avisa de que es un hueco--.
+                        self._anotar_distribucion(
+                            sufijo, str(props.get('datetime', ''))[:10],
+                            destino, feedback)
                         continue
                     feedback.pushWarning(
                         f"[!] {os.path.basename(destino)} existe pero {motivo}. "
@@ -3973,6 +4112,10 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
                     banda_out.SetDescription(sufijo)
                     salida.FlushCache()
                     salida = None
+
+                    self._dist_indices.append(_fila_estadisticas(
+                        sufijo, str(props.get('datetime', ''))[:10] or '?',
+                        estadisticas_indice(valores)))
 
                     validos = np.isfinite(valores)
                     if validos.any():
@@ -4296,6 +4439,10 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
                         f"estación. Baje el mínimo, amplíe el rango de fechas o "
                         f"suba «Nubosidad máxima DENTRO del AOI» para que "
                         f"entren más escenas parcialmente despejadas.")
+
+                self._dist_indices.append(_fila_estadisticas(
+                    f'AMPL_{sufijo}', 'seca − lluviosa',
+                    estadisticas_indice(amplitud)))
 
                 cod_seca = self._codigo_meses(meses_seca)
                 cod_lluvia = self._codigo_meses(meses_lluvia)
