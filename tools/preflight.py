@@ -996,6 +996,56 @@ def comp_padres_de_campo(inf):
         'tumbaria QGIS al abrir el dialogo: ' + '; '.join(malos))
 
 
+def comp_guia_de_indices(inf):
+    """Todo indice ofrecido tiene su fila de guia, y al reves.
+
+    GUIA_INDICES esta indexada por sufijo, aparte de
+    INDICES_ESPECTRALES, de modo que puede quedarse atras cuando se
+    anade un indice: el nuevo saldria en el informe con sus percentiles
+    y sin una linea que diga que mide ni hacia donde. Ya paso algo
+    equivalente en 1.1.0 con cuatro tablas de bandas.
+
+    Se comprueba en los DOS sentidos. Una guia de un indice que ya no se
+    ofrece no rompe nada, pero es texto muerto que alguien mantendra sin
+    motivo.
+    """
+    inf.seccion('Guia de interpretacion de los indices')
+    try:
+        import importlib.util
+        _spec = importlib.util.spec_from_file_location(
+            '_core_guia', os.path.join(DIR_PAQUETE, 'core.py'))
+        _core = importlib.util.module_from_spec(_spec)
+        _spec.loader.exec_module(_core)
+    except Exception as e:                          # pragma: no cover
+        inf.comprobar('core.py se puede cargar suelto, sin QGIS', False,
+                      str(e))
+        return
+
+    ofrecidos = {e[1] for e in _core.INDICES_ESPECTRALES}
+    con_guia = set(getattr(_core, 'GUIA_INDICES', {}) or {})
+    faltan = sorted(ofrecidos - con_guia)
+    sobran = sorted(con_guia - ofrecidos)
+    inf.comprobar(
+        f'los {len(ofrecidos)} indices ofrecidos tienen guia',
+        not faltan,
+        'saldrian en el informe sin decir que miden: ' + ', '.join(faltan))
+    inf.comprobar(
+        'ninguna guia sobra', not sobran,
+        'guia de un indice que ya no se ofrece: ' + ', '.join(sobran))
+
+    # Y que ninguna fila venga a medias: una celda vacia en «Cuidado» es
+    # justo la que el informe necesita.
+    n = len(_core.COLS_GUIA)
+    malas = []
+    for sufijo, fila in sorted((getattr(_core, 'GUIA_INDICES', {})
+                                or {}).items()):
+        completa = [sufijo] + list(fila)
+        if len(completa) != n or not all(str(c).strip() for c in completa):
+            malas.append(sufijo)
+    inf.comprobar('ninguna fila de la guia esta incompleta', not malas,
+                  'filas a medias: ' + ', '.join(malas))
+
+
 def comp_convencion_numerica(inf):
     """Una sola convencion numerica, y declarada: espacio de millar, punto
     decimal, coma en ningun papel.
@@ -1503,6 +1553,7 @@ def main(argv=None):
     comp_interfaz_en_espanol(inf)
     comp_claves_de_banda(inf)
     comp_padres_de_campo(inf)
+    comp_guia_de_indices(inf)
     comp_convencion_numerica(inf)
     comp_ayuda_parametros(inf)
     comp_escaneo(inf)

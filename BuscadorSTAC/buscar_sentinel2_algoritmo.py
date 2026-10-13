@@ -27,9 +27,13 @@ No requiere credenciales para Earth Search. Planetary Computer usa un
 token SAS anónimo gratuito que el algoritmo solicita automáticamente.
 
 Autor  : Jorge Fallas (jfallas56@gmail.com)
-Versión: 1.7.0
+Versión: 1.8.0
 
 Historial:
+    1.8.0 (2026-10-12): Guia de como se lee cada indice en el informe
+        --que mide, alto, bajo y de que se confunde-- y el informe
+        habla solo de los indices pedidos: 1.7.0 sacaba los tramos de
+        NDVI incluso a quien solo habia calculado NDMI.
     1.7.0 (2026-10-12): Informe de distribucion de los indices
         (indices_distribucion.html): percentiles de cada indice y
         escena sobre los pixeles validos del recorte, para saber si un
@@ -1007,7 +1011,7 @@ def _geom_desde_geojson(gj):
 # --------------------------------------------------------------------------
 class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
 
-    VERSION = 'v1.7.0'
+    VERSION = 'v1.8.0'
 
     # Lógica pura, definida en core.py y reenganchada aquí como
     # staticmethod. Así cada sitio de llamada sigue siendo
@@ -1217,10 +1221,11 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             "cada índice y escena sobre los píxeles válidos de SU recorte. "
             "Un ráster gris no dice si un valor es alto; su propia escena "
             "sí, y es la única comparación que no depende de una tabla "
-            "ajena. Trae además rangos <i>orientativos</i> de NDVI por tipo "
-            "de cubierta, con la lectura alternativa de cada tramo al lado: "
-            "el NDVI confunde cuánta cubierta hay con en qué estado está, de "
-            "modo que un mismo valor admite dos lecturas.<br><br>"
+            "ajena. Trae además una guía de cómo se lee cada índice —qué "
+            "mide, qué es un valor alto, qué es uno bajo y de qué se "
+            "confunde— y, si pidió NDVI, rangos <i>orientativos</i> por "
+            "tipo de cubierta con la lectura alternativa de cada tramo al "
+            "lado. Solo aparecen los índices que pidió.<br><br>"
             "<b>Si la amplitud sale vacía</b>, el aviso distingue la causa: "
             "una estación entera nublada, «Mínimo de observaciones por píxel» "
             "demasiado alto (indica el valor que sí funcionaría), o escenas "
@@ -1639,11 +1644,17 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             'contesta —«¿0.45 es alto o bajo aquí?»— y lo hace con su '
             'escena, que es la única comparación que no depende de una tabla '
             'ajena. Los percentiles 2 y 98 son los mismos del realce, así '
-            'que explican el color que ve. Incluye también rangos '
-            '<i>orientativos</i> de NDVI por tipo de cubierta, dichos como '
-            'lo que son: no una clasificación publicada, y con la lectura '
-            'alternativa de cada tramo en su propia columna, porque el NDVI '
-            'confunde cuánta cubierta hay con en qué estado está.<br><br>'
+            'que explican el color que ve.<br>'
+            'Lleva además una guía de <b>cómo se lee cada índice</b>: qué '
+            'mide, qué significa un valor alto, qué significa uno bajo y '
+            '—la columna que importa— de qué se confunde. Da direcciones y '
+            'no tramos numéricos porque la dirección está establecida y los '
+            'límites de clase no. Y rangos <i>orientativos</i> de NDVI, solo '
+            'si pidió NDVI, dichos como lo que son: no una clasificación '
+            'publicada, y con la lectura alternativa de cada tramo al '
+            'lado.<br>'
+            'El informe habla <b>solo de los índices que pidió</b>: no le '
+            'ofrece tramos de un índice que no calculó.<br><br>'
             '<b>Procedencia del EVI2.</b> Es el único de la lista con '
             'coeficientes calibrados, así que conviene saber de dónde salen: '
             'Jiang et al. (2008), <i>Remote Sensing of Environment</i> '

@@ -1,6 +1,6 @@
 # Buscador STAC: Sentinel, Landsat y Esri Wayback
 
-![version](https://img.shields.io/badge/version-1.7.0-blue)
+![version](https://img.shields.io/badge/version-1.8.0-blue)
 ![QGIS](https://img.shields.io/badge/QGIS-%E2%89%A5%203.28-green)
 ![licencia](https://img.shields.io/badge/licencia-GPL%20v2%2B-orange)
 
@@ -185,7 +185,20 @@ que sugerían longitudes de onda distintas.
   Los percentiles 2 y 98 son los mismos que usa el realce de la simbología,
   así que explican el color que ve en el lienzo.
 
-  El informe trae además **rangos orientativos de NDVI** por tipo de cubierta.
+  El informe trae además una guía de **cómo se lee cada índice**: qué mide, qué
+  significa un valor alto, qué significa uno bajo y —la columna que importa— de
+  qué se confunde. Da **direcciones, no tramos numéricos**, porque la dirección
+  está establecida y los límites de clase no: el MSI va al revés que los demás,
+  el NDMI sobre suelo descubierto mide la humedad del suelo y no de un dosel
+  que no existe, una sola fecha de NBR no es severidad de quema, y las tres
+  componentes de Tasseled Cap no son comparables entre sensores. Está escrita
+  para quien no trabaja en teledetección a diario.
+
+  **El informe habla solo de los índices que pidió.** Si calculó únicamente
+  NDMI no recibe tramos de NDVI al lado de sus números — eso invitaría
+  justamente a la lectura equivocada que la tabla existe para evitar.
+
+  Y trae **rangos orientativos de NDVI** por tipo de cubierta, solo si pidió NDVI.
   Son pocos y anchos a propósito: una tabla de diez rangos iguales promete una
   resolución que el índice no tiene, y sus tramos altos caen en la zona de
   saturación, donde menos resuelve. Cada tramo lleva su **lectura
@@ -660,6 +673,7 @@ Copyright © 2026 Jorge Fallas <jfallas56@gmail.com>
 
 | Versión | Fecha | Cambios |
 |---|---|---|
+| 1.8.0 | 2026-10-12 | Guía de **cómo se lee cada índice** en el informe: qué mide, qué es alto, qué es bajo y de qué se confunde, para los once. Direcciones y no tramos, porque la dirección está establecida y los límites de clase no. Y el informe habla **solo de los índices pedidos**: 1.7.0 sacaba los tramos de NDVI siempre, incluso a quien solo había calculado NDMI. |
 | 1.7.0 | 2026-10-12 | **Informe de distribución** (`indices_distribucion.html`): percentiles de cada índice y escena sobre los píxeles válidos del recorte, para saber si un valor es alto o bajo **ahí** en vez de consultarlo en una tabla ajena. Con rangos orientativos de NDVI por cubierta, pocos y anchos, con la lectura alternativa de cada tramo en su propia columna y la zona de saturación dicha donde ocurre. |
 | 1.6.1 | 2026-10-12 | Se retira de la ayuda de Esri Wayback la cifra «medido sobre un lote de Guanacaste, 5 de 196»: de esa medición no queda rastro, y «medido» afirma un experimento. Se conserva el mecanismo —sobre un lote pequeño quedan unas pocas versiones y no doscientas— y la ayuda remite al modo «Listar», que da el número sobre el área del usuario. |
 | 1.6.0 | 2026-10-12 | **EVI2** (Jiang et al. 2008), once índices: vigor que no se satura en cubierta densa, donde el NDVI deja de informar. Es el único con coeficientes calibrados, así que lleva su procedencia y la suposición en la que se apoya (razón rojo/azul 2.08). Y el texto deja de presentar el complemento como herramienta de Costa Rica: el flujo con nubosidad alta y los meses de estación valen para cualquier región. Lo que se queda es decir cuál es el valor **por omisión**. |

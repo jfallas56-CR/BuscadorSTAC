@@ -897,3 +897,51 @@ def test_una_coma_decimal_partida_entre_dos_lineas_tambien_se_ve(copia):
     _escribir(copia, 'buscar_sentinel2_provider.py', t)
     _, datos = _correr(copia)
     assert _dice(datos, 'coma decimal'), _bloqueantes(datos)
+
+
+# =====================================================================
+# Guia de interpretacion de los indices
+# =====================================================================
+def test_detecta_un_indice_ofrecido_sin_guia(copia):
+    """El defecto que la comprobacion cierra: un indice nuevo saldria en
+    el informe con sus percentiles y sin una linea que diga que mide.
+
+    Es la misma forma del fallo de 1.1.0: una tabla indexada aparte de
+    la lista de indices que se queda atras al anadir uno.
+    """
+    t = _leer(copia, 'core.py')
+    ancla = "    'NDMI': (\n"
+    assert ancla in t, 'cambio la forma de GUIA_INDICES'
+    # Quitarle la guia al NDMI: se renombra la clave, de modo que el
+    # indice sigue ofreciendose pero su guia ya no lo encuentra.
+    _escribir(copia, 'core.py', t.replace(ancla, "    'NDMI_VIEJO': (\n", 1))
+    _, datos = _correr(copia)
+    assert _dice(datos, 'tienen guia'), _bloqueantes(datos)
+
+
+def test_detecta_una_guia_que_ya_no_corresponde_a_ningun_indice(copia):
+    """El sentido contrario: texto muerto que alguien mantendra sin
+    motivo. No rompe un informe, pero no debe quedarse."""
+    t = _leer(copia, 'core.py')
+    ancla = "    'NDMI': (\n"
+    assert ancla in t
+    _escribir(copia, 'core.py',
+              t.replace(ancla, "    'NOEXISTE': (\n" + '''        'x', 'x', 'x', 'x'),
+''' + ancla, 1))
+    _, datos = _correr(copia)
+    assert _dice(datos, 'sobra'), _bloqueantes(datos)
+
+
+def test_detecta_una_fila_de_guia_a_medias(copia):
+    """Una celda vacia en «Cuidado» es justo la que el informe necesita:
+    cada indice tiene una confusion caracteristica y es la que convierte
+    un mapa convincente en una conclusion equivocada."""
+    t = _leer(copia, 'core.py')
+    ancla = ("        'Se invierte respecto a los demás índices: aquí un "
+             "valor ALTO es '")
+    assert ancla in t, 'cambio el texto de referencia de la prueba'
+    i = t.index(ancla)
+    fin = t.index("'planta.'", i) + len("'planta.'")
+    _escribir(copia, 'core.py', t[:i] + "        ''" + t[fin:])
+    _, datos = _correr(copia)
+    assert _dice(datos, 'incompleta'), _bloqueantes(datos)

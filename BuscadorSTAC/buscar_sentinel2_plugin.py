@@ -24,7 +24,7 @@ deshacer ambas cosas al descargar. La lógica de teledetección vive entera en
 buscar_sentinel2_algoritmo.py.
 
 Autor  : Jorge Fallas (jfallas56@gmail.com)
-Versión: 1.7.0
+Versión: 1.8.0
 Licencia: GPL v2 o posterior
 """
 

@@ -25,7 +25,7 @@ cambió ni una línea de ellos.
 
 Autor    : Jorge Fallas (jfallas56@gmail.com)
 Licencia : GPL v2 o posterior
-Versión  : 1.7.0
+Versión  : 1.8.0
 """
 
 import datetime
@@ -915,6 +915,134 @@ RANGOS_NDVI = (
 )
 
 
+# Qué mide cada índice y hacia dónde. Lo que SÍ está establecido para los
+# once es la DIRECCIÓN de la respuesta; lo que no, los límites numéricos de
+# clase. De ahí que esta tabla dé dirección y no tramos: no hay nada que
+# inventar y no hay nada que envejezca.
+#
+# Está pensada para quien no es especialista en teledetección, que es la
+# mayoría de quien abre el informe. La columna «Cuidado» es la importante:
+# cada índice tiene una confusión caracteristica, y es la que convierte un
+# mapa bonito en una conclusión equivocada.
+#
+# Clave = sufijo del archivo, de modo que la fila se encuentra desde el
+# nombre del GeoTIFF que el usuario tiene delante.
+GUIA_INDICES = {
+    'NDVI': (
+        'Cantidad de vegetación verde (contraste entre el infrarrojo '
+        'cercano y el rojo)',
+        'Mucha cubierta verde y activa',
+        'Poca o ninguna vegetación verde',
+        'Se satura en cubierta densa: pasado cierto punto, más biomasa ya '
+        'no lo sube. Y no separa CUÁNTA cubierta hay de EN QUÉ ESTADO '
+        'está, así que un mismo valor admite las dos lecturas.'),
+    'SAVI': (
+        'Lo mismo que el NDVI, descontando el suelo que se ve entre las '
+        'plantas',
+        'Mucha cubierta verde',
+        'Poca vegetación',
+        'Solo mejora al NDVI donde hay suelo descubierto a la vista. Con '
+        'cubierta cerrada da prácticamente lo mismo, y se satura igual.'),
+    'EVI2': (
+        'Vigor de la vegetación, sin saturarse en cubierta densa',
+        'Mucha biomasa verde; sigue respondiendo donde el NDVI ya no',
+        'Poca vegetación',
+        'Su recorrido NO es de −1 a 1: sobre vegetación va de 0 a ≈0.9. '
+        'Sus coeficientes están calibrados sobre MODIS y suponen una razón '
+        'rojo/azul de 2.08.'),
+    'NDMI': (
+        'Agua retenida en la cubierta (infrarrojo cercano frente al SWIR 1)',
+        'Cubierta hidratada',
+        'Cubierta seca, o poca cubierta',
+        'Donde hay poca cubierta mide la humedad del SUELO, no de un dosel '
+        'que no existe. Un valor bajo puede ser sequía o puede ser que no '
+        'haya vegetación: no distingue los dos casos.'),
+    'NBR': (
+        'Estructura de la vegetación y material quemado (infrarrojo cercano '
+        'frente al SWIR 2)',
+        'Vegetación en pie',
+        'Superficie quemada o suelo expuesto',
+        'Una sola fecha NO mide severidad de quema. Para eso hace falta la '
+        'diferencia entre antes y después del fuego (dNBR), que es otra '
+        'cantidad y tiene sus propios umbrales publicados.'),
+    'MSI': (
+        'Estrés hídrico (razón SWIR 1 / infrarrojo cercano). Va al REVÉS de '
+        'los demás',
+        'Cubierta seca o estresada',
+        'Cubierta hidratada',
+        'Se invierte respecto a los demás índices: aquí un valor ALTO es '
+        'mala señal. Es una razón sin cota superior, y sobre suelo '
+        'descubierto da valores altos que no son el estrés de ninguna '
+        'planta.'),
+    'NDRE': (
+        'Clorofila, por el borde rojo',
+        'Más clorofila',
+        'Menos clorofila: senescencia o deficiencia',
+        'Solo Sentinel-2: Landsat no tiene borde rojo. Responde al ESTADO '
+        'de la hoja más que a cuánta cubierta hay, de modo que para '
+        'cartografía de cobertura dice menos que el NDMI o el NBR.'),
+    'CIre': (
+        'Clorofila, por el borde rojo, como razón',
+        'Más clorofila',
+        'Menos clorofila',
+        'Solo Sentinel-2. Sin cota superior. Lleva el borde rojo 1 en el '
+        'denominador, así que sobre cubierta escasa amplifica el ruido.'),
+    'TCB': (
+        'Brillo: suma ponderada de toda la reflectancia',
+        'Suelo descubierto, arena, roca, superficie construida',
+        'Agua, dosel denso, sombra',
+        'Los coeficientes son propios de cada sensor, de modo que un valor '
+        'NO es comparable entre Sentinel-2 y Landsat ni entre Landsat '
+        'distintos. Dos de los cuatro conjuntos se derivaron sobre '
+        'reflectancia TOA y aquí se aplican a reflectancia de superficie; '
+        'el registro lo avisa en cada ejecución.'),
+    'TCG': (
+        'Verdor: el eje de la vegetación, independiente del brillo y de la '
+        'humedad',
+        'Vegetación',
+        'Sin vegetación',
+        'Como las otras dos componentes, sus coeficientes son propios de '
+        'cada sensor: no compare el valor entre sensores distintos.'),
+    'TCW': (
+        'Humedad: contraste entre visible+NIR y los dos SWIR',
+        'Agua en la cubierta y en el suelo, sombra',
+        'Seco',
+        'Responde también a la sombra que una superficie rugosa proyecta '
+        'sobre sí misma, que puede leerse como humedad. Coeficientes '
+        'propios de cada sensor: no comparable entre sensores.'),
+}
+
+COLS_GUIA = ('Índice', 'Qué mide', 'Valor alto', 'Valor bajo', 'Cuidado')
+
+
+def sufijos_presentes(filas):
+    """Sufijos de índice que aparecen en la tabla de distribución.
+
+    Se leen de las propias filas --primera celda-- y no de un parametro
+    aparte, para que el informe no pueda hablar de un indice que no
+    calculo. Un «AMPL_NDVI» cuenta como NDVI: la amplitud es del mismo
+    indice y la guia que le sirve es la misma.
+    """
+    vistos = []
+    for fila in filas or []:
+        if not fila:
+            continue
+        nombre = str(fila[0])
+        if nombre.startswith('AMPL_'):
+            nombre = nombre[len('AMPL_'):]
+        if nombre not in vistos:
+            vistos.append(nombre)
+    return vistos
+
+
+def _filas_guia(sufijos):
+    """Filas de la guía, en el orden canónico de INDICES_ESPECTRALES."""
+    pedidos = set(sufijos or ())
+    orden = [e[1] for e in INDICES_ESPECTRALES]
+    return [[s] + list(GUIA_INDICES[s])
+            for s in orden if s in pedidos and s in GUIA_INDICES]
+
+
 def _rango_texto(lo, hi):
     """«< 0.0», «0.0 – 0.2» o «> 0.8», con la convención del complemento."""
     if lo is None:
@@ -959,6 +1087,12 @@ def informe_indices_html(datos):
     de texto y se prueba sin QGIS. Comparte con él el documento y el CSS.
     """
     filas = datos.get('distribucion') or []
+    # Solo se habla de los indices que el usuario PIDIO. El informe
+    # sacaba la tabla de tramos de NDVI siempre, de modo que quien
+    # calculaba solo NDMI recibia tramos de un indice que no tenia, al
+    # lado de sus numeros: justo la lectura equivocada que esa tabla
+    # existe para evitar.
+    presentes = sufijos_presentes(filas)
     partes = [
         _tabla_cols_html(
             'Distribución de cada índice', COLS_DISTRIBUCION, filas,
@@ -969,9 +1103,18 @@ def informe_indices_html(datos):
             'percentiles 2 y 98 son los mismos que usa el realce de la '
             'simbología, así que explican el color que ve en el lienzo.'),
         _tabla_cols_html(
+            'Cómo se lee cada índice', COLS_GUIA, _filas_guia(presentes),
+            'Para quien no trabaja en teledetección a diario: qué mide cada '
+            'índice y hacia dónde. Se dan direcciones y no tramos porque la '
+            'dirección está establecida y los límites de clase no: dónde '
+            'empieza una clase lo decide su área de estudio. La columna '
+            '«Cuidado» es la que importa — cada índice tiene una confusión '
+            'característica, y es la que convierte un mapa convincente en '
+            'una conclusión equivocada.'),
+        _tabla_cols_html(
             'Rangos orientativos de NDVI',
             ('NDVI', 'Cubierta típica', 'Pero también puede ser'),
-            _filas_rangos_ndvi(),
+            _filas_rangos_ndvi() if 'NDVI' in presentes else [],
             'ORIENTATIVOS, y nada más: no son una clasificación publicada '
             'ni se derivaron de su área. La tercera columna es la razón: '
             'el NDVI confunde cuánta cubierta hay con en qué estado está, '

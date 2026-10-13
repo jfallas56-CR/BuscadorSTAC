@@ -1671,3 +1671,88 @@ def test_el_informe_del_radar_sigue_igual_tras_compartir_el_documento():
                     'Productos escritos', 'Escenas usadas', 'Entorno',
                     'Fuentes y licencias'):
         assert seccion in html, seccion
+
+
+# --------------------------------------------------------------------------
+# Guia de interpretacion: direccion, no tramos
+# --------------------------------------------------------------------------
+def test_la_guia_cubre_todos_los_indices_ofrecidos():
+    """Un indice nuevo sin guia sale en el informe sin explicacion.
+
+    Es la misma clase de defecto que ya costo la 1.1.0: una tabla
+    indexada aparte de la lista de indices, que se queda atras cuando se
+    anade uno. Al meter el EVI2 hubo que acordarse de esta; esta prueba
+    y la comprobacion de preflight son para que no haya que acordarse.
+    """
+    ofrecidos = {e[1] for e in core.INDICES_ESPECTRALES}
+    con_guia = set(core.GUIA_INDICES)
+    assert ofrecidos <= con_guia, (
+        'sin guia: %r' % sorted(ofrecidos - con_guia))
+    assert con_guia <= ofrecidos, (
+        'guia de un indice que no se ofrece: %r'
+        % sorted(con_guia - ofrecidos))
+
+
+def test_cada_fila_de_la_guia_esta_completa():
+    n = len(core.COLS_GUIA)
+    for sufijo in core.GUIA_INDICES:
+        fila = [sufijo] + list(core.GUIA_INDICES[sufijo])
+        assert len(fila) == n, (sufijo, len(fila), n)
+        assert all(str(c).strip() for c in fila), sufijo
+
+
+def test_la_guia_avisa_de_la_confusion_de_cada_indice():
+    """La columna «Cuidado» es la que convierte un mapa en una
+    conclusion. Se comprueban las que ya costaron una conversacion."""
+    assert 'satura' in core.GUIA_INDICES['NDVI'][3].lower()
+    # El NDMI sobre suelo desnudo mide humedad del suelo, no de un dosel.
+    assert 'suelo' in core.GUIA_INDICES['NDMI'][3].lower()
+    # El MSI va al reves que los demas: si eso no se dice, se lee al reves.
+    assert 'invierte' in core.GUIA_INDICES['MSI'][3].lower()
+    assert 'rev' in core.GUIA_INDICES['MSI'][0].lower()
+    # Una sola fecha de NBR no es severidad de quema.
+    assert 'dNBR' in core.GUIA_INDICES['NBR'][3]
+    # Tasseled Cap: no comparable entre sensores.
+    for s in ('TCB', 'TCG', 'TCW'):
+        assert 'sensor' in core.GUIA_INDICES[s][3].lower(), s
+    # Los de borde rojo dicen que son solo de Sentinel-2.
+    for s in ('NDRE', 'CIre'):
+        assert 'Sentinel-2' in core.GUIA_INDICES[s][3], s
+
+
+def test_sufijos_presentes_lee_las_filas_y_no_un_parametro():
+    f = [['NDVI', '…'], ['AMPL_NDVI', '…'], ['NDMI', '…'], ['NDVI', '…']]
+    assert core.sufijos_presentes(f) == ['NDVI', 'NDMI']
+    assert core.sufijos_presentes([]) == []
+    assert core.sufijos_presentes(None) == []
+
+
+def test_el_informe_solo_habla_de_los_indices_pedidos():
+    """El defecto que 1.7.0 llevaba: la tabla de tramos de NDVI salia
+    siempre, de modo que quien calculaba solo NDMI recibia tramos de un
+    indice que no tenia, al lado de sus numeros.
+    """
+    def informe(sufijos):
+        filas = [core._fila_estadisticas(
+            s, '2026-01-14',
+            core.estadisticas_indice(np.linspace(-0.2, 0.9, 40)))
+            for s in sufijos]
+        return core.informe_indices_html(
+            {'titulo': 'T', 'generado': 'G', 'generado_por': 'P',
+             'distribucion': filas})
+
+    solo_ndmi = informe(['NDMI'])
+    assert 'Agua retenida en la cubierta' in solo_ndmi, 'falta su guia'
+    assert 'Dosel cerrado' not in solo_ndmi, (
+        'los tramos de NDVI no deben salir si no se calculo NDVI')
+    assert 'Rangos orientativos' not in solo_ndmi
+    # Y no debe colarse la guia de otro indice.
+    assert 'Estrés hídrico' not in solo_ndmi
+
+    con_ndvi = informe(['NDVI'])
+    assert 'Dosel cerrado' in con_ndvi
+    assert 'Rangos orientativos' in con_ndvi
+
+    # La amplitud de un indice cuenta como ese indice.
+    solo_ampl = informe(['AMPL_NDVI'])
+    assert 'Rangos orientativos' in solo_ampl
