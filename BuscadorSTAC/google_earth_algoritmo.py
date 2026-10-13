@@ -41,7 +41,7 @@ LO QUE NO HACE
 
 Autor    : Jorge Fallas (jfallas56@gmail.com)
 Licencia : GPL v2 o posterior
-Versión  : 1.8.1
+Versión  : 1.9.0
 
 Historial:
     1.6.0 (2026-10-12): EVI2 (Jiang et al. 2008), vigor que no se satura
@@ -133,7 +133,7 @@ FORMATOS_IMAGEN = ['PNG (conserva transparencia)', 'JPEG (menos peso)']
 class ExportarGoogleEarthAlgorithm(QgsProcessingAlgorithm):
     """Capa ráster o vectorial a KMZ, y abrirlo en Google Earth."""
 
-    VERSION = 'v1.8.1'
+    VERSION = 'v1.9.0'
 
     CAPA = 'CAPA'
     CAMPO_FECHA = 'CAMPO_FECHA'

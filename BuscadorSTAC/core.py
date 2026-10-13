@@ -25,7 +25,7 @@ cambió ni una línea de ellos.
 
 Autor    : Jorge Fallas (jfallas56@gmail.com)
 Licencia : GPL v2 o posterior
-Versión  : 1.8.1
+Versión  : 1.9.0
 """
 
 import datetime
@@ -1051,6 +1051,171 @@ def _filas_guia(sufijos):
             for s in orden if s in pedidos and s in GUIA_INDICES]
 
 
+# ==========================================================================
+# dNBR: severidad de quema entre una fecha anterior y otra posterior
+# ==========================================================================
+# Los umbrales son los de Key y Benson (2006), «Landscape Assessment» en el
+# manual FIREMON del USFS, adoptados entre otros por el EFFIS de Copernicus
+# y por el MTBS.
+#
+# OJO CON LAS UNIDADES, que es la trampa de esta tabla: la literatura los
+# publica multiplicados por 1000 --«100 a 270»-- porque trabaja con el
+# indice escalado a enteros. Aqui el NBR se calcula en unidades de indice,
+# de modo que los mismos umbrales son 0.100 a 0.270. Confundirlos no da
+# error: da un mapa donde TODO sale «sin quemar», porque ningun dNBR real
+# llega a 100 en unidades de indice.
+#
+# Y OJO CON A QUE SE APLICAN. Son para el dNBR de un incendio concreto:
+# NBR de antes menos NBR de despues del MISMO fuego. NO valen para la
+# amplitud estacional AMPL_NBR, que esta construida igual --una resta de
+# dos NBR-- pero mide otra cosa: la diferencia entre estacion seca y
+# lluviosa de una cubierta que no se quemo. Trasladar los umbrales de una
+# a la otra es exactamente el error de autoridad falsa que este
+# complemento viene corrigiendo.
+CLASES_DNBR = (
+    ('Sin quemar o rebrote', None, 0.100),
+    ('Severidad baja', 0.100, 0.270),
+    ('Severidad moderada-baja', 0.270, 0.440),
+    ('Severidad moderada-alta', 0.440, 0.660),
+    ('Severidad alta', 0.660, None),
+)
+
+# Condiciones bajo las que los umbrales de arriba significan algo. Se
+# publican junto a la tabla en el informe, porque una tabla de umbrales
+# sin sus condiciones es una invitacion a aplicarla donde no vale.
+CONDICIONES_DNBR = (
+    ('Mismo sensor en las dos fechas',
+     'Un NBR de Sentinel-2 y otro de Landsat no se restan: las bandas no '
+     'son las mismas y la diferencia arrastraria ese desajuste como si '
+     'fuera severidad.'),
+    ('Las dos escenas despejadas sobre el área quemada',
+     'Una nube en cualquiera de las dos fechas deja NaN, y una nube sin '
+     'enmascarar se parece a una quema: ambas bajan el NBR.'),
+    ('La diferencia es pre menos post',
+     'Así una quema da dNBR POSITIVO. Al revés, los umbrales publicados '
+     'no aplican y el signo invierte la lectura.'),
+    ('Umbrales derivados en otros ecosistemas',
+     'Key y Benson los calibraron contra el índice de severidad de campo '
+     '(CBI) en bosques de Norteamérica. En otra vegetación conservan el '
+     'orden pero no necesariamente los cortes: valídelos con datos de '
+     'campo antes de informar áreas por clase.'),
+    ('Fuera del área quemada el dNBR no es cero',
+     'Entre las dos fechas la vegetación sana también cambia —fenología, '
+     'riego, cosecha—, y eso aparece como dNBR distinto de cero. Delimite '
+     'el perímetro del incendio antes de contar áreas por clase; si no, '
+     'la clase «severidad baja» recoge media escena.'),
+    ('No se aplican a AMPL_NBR',
+     'La amplitud estacional está construida igual pero mide otra cosa: '
+     'la diferencia seca menos lluviosa de una cubierta que no se quemó.'),
+)
+
+EVALUACIONES_DNBR = ('inicial', 'extendida')
+DIAS_ANIO = 365
+
+
+def _a_fecha(texto):
+    """'AAAA-MM-DD' a datetime.date, o None si no se puede."""
+    try:
+        return datetime.date.fromisoformat(str(texto)[:10])
+    except (TypeError, ValueError):
+        return None
+
+
+def elegir_escenas_dnbr(fechas, fecha_incendio, evaluacion='inicial'):
+    """Escoge la escena anterior y la posterior al fuego.
+
+    Devuelve un dict con 'pre', 'post', 'dias' --los transcurridos entre
+    el fuego y la escena posterior-- y 'motivo' cuando no se puede.
+
+    La escena ANTERIOR es siempre la más próxima antes del fuego: cuanto
+    más cerca, menos cambio ajeno al incendio se cuela en la resta.
+
+    La POSTERIOR depende de la convención, y las dos miden cosas
+    distintas, que es la razón de que el usuario elija:
+      - «inicial»: la más próxima después. Recoge el carbón y la ceniza
+        recién depositados.
+      - «extendida»: la más cercana a un año después. Recoge la mortalidad
+        diferida y lo que de verdad sobrevivió al primer rebrote. Es la
+        que usa el MTBS para la mayoría de sus incendios.
+
+    Una escena de la fecha EXACTA del incendio se descarta de las dos
+    listas a proposito: el fuego pudo estar activo durante la toma, y
+    entonces no es ni el antes ni el despues.
+    """
+    dia = _a_fecha(fecha_incendio)
+    if dia is None:
+        return {'pre': None, 'post': None, 'dias': None,
+                'motivo': 'la fecha del incendio no se entiende; use '
+                          'AAAA-MM-DD'}
+    if evaluacion not in EVALUACIONES_DNBR:
+        evaluacion = 'inicial'
+
+    validas = sorted({f for f in (
+        (_a_fecha(x), str(x)[:10]) for x in (fechas or []))
+        if f[0] is not None}, key=lambda p: p[0])
+    antes = [p for p in validas if p[0] < dia]
+    despues = [p for p in validas if p[0] > dia]
+
+    if not antes:
+        return {'pre': None, 'post': None, 'dias': None,
+                'motivo': f'no hay ninguna escena anterior al {dia}; '
+                          f'amplíe el rango de fechas hacia atrás'}
+    if not despues:
+        return {'pre': None, 'post': None, 'dias': None,
+                'motivo': f'no hay ninguna escena posterior al {dia}; '
+                          f'amplíe el rango de fechas hacia adelante'}
+
+    pre = antes[-1]
+    if evaluacion == 'extendida':
+        objetivo = dia + datetime.timedelta(days=DIAS_ANIO)
+        post = min(despues, key=lambda p: abs((p[0] - objetivo).days))
+    else:
+        post = despues[0]
+
+    return {'pre': pre[1], 'post': post[1],
+            'dias': (post[0] - dia).days,
+            'dias_pre': (dia - pre[0]).days,
+            'evaluacion': evaluacion, 'motivo': ''}
+
+
+def clasificar_dnbr(valores, area_pixel_m2=None):
+    """Reparte un dNBR en las clases de severidad y cuenta cada una.
+
+    Devuelve una lista de filas listas para la tabla del informe. El
+    area se da en hectareas cuando se conoce el tamano del pixel; sin
+    el, solo el recuento. Se cuenta sobre los pixeles FINITOS: los NaN
+    son nube o falta de dato en alguna de las dos fechas, y meterlos en
+    «sin quemar» inflaria justo la clase que ya recoge de todo.
+    """
+    arr = np.asarray(valores, dtype='float64').ravel()
+    finitos = arr[np.isfinite(arr)]
+    total = int(finitos.size)
+    filas = []
+    for nombre, lo, hi in CLASES_DNBR:
+        if lo is None:
+            masc = finitos < hi
+        elif hi is None:
+            masc = finitos >= lo
+        else:
+            masc = (finitos >= lo) & (finitos < hi)
+        n = int(masc.sum())
+        pct = (100.0 * n / total) if total else 0.0
+        ha = ('' if area_pixel_m2 in (None, 0)
+              else miles(n * float(area_pixel_m2) / 10000.0, 2))
+        filas.append([nombre, _rango_dnbr_texto(lo, hi), miles(n),
+                      f'{pct:.1f}', ha])
+    return filas
+
+
+def _rango_dnbr_texto(lo, hi):
+    """El tramo, en unidades de índice y con el x1000 de la literatura."""
+    if lo is None:
+        return f'< {hi:.3f}  (< {hi * 1000:.0f})'
+    if hi is None:
+        return f'≥ {lo:.3f}  (≥ {lo * 1000:.0f})'
+    return f'{lo:.3f} – {hi:.3f}  ({lo * 1000:.0f} – {hi * 1000:.0f})'
+
+
 def _rango_texto(lo, hi):
     """«< 0.0», «0.0 – 0.2» o «> 0.8», con la convención del complemento."""
     if lo is None:
@@ -1111,6 +1276,28 @@ def informe_indices_html(datos):
             'una tabla ajena. Los percentiles 2 y 98 son los mismos que '
             'usa el realce de la simbología, así que explican el color '
             'que ve en el lienzo.'),
+        _tabla_html(
+            'dNBR — escenas usadas', datos.get('dnbr_escenas') or [],
+            'La resta es ANTES menos DESPUÉS, de modo que una quema sale '
+            'POSITIVA: es el signo con el que están publicados los '
+            'umbrales.'),
+        _tabla_cols_html(
+            'dNBR — severidad de quema',
+            ('Clase', 'dNBR (unidades de índice, y ×1000 como lo publica '
+             'la literatura)', 'Píxeles', '% de los válidos', 'Hectáreas'),
+            datos.get('dnbr_clases') or [],
+            'Clases de Key y Benson (2006), «Landscape Assessment» del '
+            'manual FIREMON del USFS, adoptadas entre otros por el EFFIS de '
+            'Copernicus y por el MTBS. Las áreas valen SOLO dentro del '
+            'perímetro del incendio: delimítelo antes de informarlas. Lea '
+            'las condiciones de abajo antes de usar estos números.'),
+        _tabla_cols_html(
+            'dNBR — condiciones bajo las que estos umbrales significan algo',
+            ('Condición', 'Por qué'),
+            [[t, d] for t, d in CONDICIONES_DNBR]
+            if datos.get('dnbr_clases') else [],
+            'Una tabla de umbrales sin sus condiciones es una invitación a '
+            'aplicarla donde no vale.'),
         _tabla_cols_html(
             'Cómo se lee cada índice', COLS_GUIA, _filas_guia(presentes),
             'Esta tabla dice qué mide cada índice y en qué dirección '

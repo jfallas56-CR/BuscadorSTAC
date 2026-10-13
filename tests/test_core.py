@@ -1756,3 +1756,182 @@ def test_el_informe_solo_habla_de_los_indices_pedidos():
     # La amplitud de un indice cuenta como ese indice.
     solo_ampl = informe(['AMPL_NDVI'])
     assert 'Rangos orientativos' in solo_ampl
+
+
+# --------------------------------------------------------------------------
+# dNBR: severidad de quema
+# --------------------------------------------------------------------------
+_FECHAS_DNBR = ['2025-11-18', '2025-12-04', '2026-01-09', '2026-01-25',
+                '2026-02-10', '2026-11-22', '2026-12-28']
+_FUEGO = '2026-01-15'
+
+
+def test_dnbr_evaluacion_inicial_toma_la_escena_mas_proxima():
+    r = core.elegir_escenas_dnbr(_FECHAS_DNBR, _FUEGO, 'inicial')
+    assert r['pre'] == '2026-01-09'
+    assert r['post'] == '2026-01-25'
+    assert r['dias'] == 10
+    assert not r['motivo']
+
+
+def test_dnbr_evaluacion_extendida_apunta_a_un_ano_despues():
+    """Y no a la escena mas proxima: mide otra cosa.
+
+    La inicial recoge el carbon y la ceniza; la extendida, la mortalidad
+    diferida y lo que sobrevivio al primer rebrote. Entre 2026-11-22
+    (311 dias) y 2026-12-28 (347) gana la segunda por estar mas cerca
+    del ano.
+    """
+    r = core.elegir_escenas_dnbr(_FECHAS_DNBR, _FUEGO, 'extendida')
+    assert r['pre'] == '2026-01-09'
+    assert r['post'] == '2026-12-28', r['post']
+    assert abs(r['dias'] - core.DIAS_ANIO) < 30
+
+
+def test_dnbr_la_escena_del_dia_del_fuego_no_vale_para_ninguna_cosa():
+    """El fuego pudo estar activo durante la toma: esa escena no es ni
+    el antes ni el despues. Si se colara como «pre», la resta mediria
+    la quema contra la quema."""
+    r = core.elegir_escenas_dnbr(['2026-01-09', '2026-01-15', '2026-02-10'],
+                                 _FUEGO, 'inicial')
+    assert r['pre'] == '2026-01-09'
+    assert r['post'] == '2026-02-10'
+
+
+def test_dnbr_sin_escena_de_un_lado_explica_que_hacer():
+    r = core.elegir_escenas_dnbr(['2026-02-10', '2026-03-01'], _FUEGO)
+    assert r['pre'] is None and r['post'] is None
+    assert 'anterior' in r['motivo'] and 'atrás' in r['motivo']
+
+    r = core.elegir_escenas_dnbr(['2025-12-04', '2026-01-09'], _FUEGO)
+    assert r['pre'] is None and r['post'] is None
+    assert 'posterior' in r['motivo'] and 'adelante' in r['motivo']
+
+
+def test_dnbr_tolera_fechas_repetidas_y_basura():
+    r = core.elegir_escenas_dnbr(
+        ['2026-01-09', '2026-01-09', None, 'ayer', '', '2026-02-10'],
+        _FUEGO)
+    assert r['pre'] == '2026-01-09' and r['post'] == '2026-02-10'
+
+
+def test_dnbr_fecha_de_incendio_ilegible_se_rechaza_con_el_formato():
+    for mala in ('ayer', '', None, '15/01/2026', '2026-13-45'):
+        r = core.elegir_escenas_dnbr(_FECHAS_DNBR, mala)
+        assert r['pre'] is None, mala
+        assert 'AAAA-MM-DD' in r['motivo'], mala
+
+
+def test_dnbr_una_evaluacion_desconocida_cae_en_la_inicial():
+    r = core.elegir_escenas_dnbr(_FECHAS_DNBR, _FUEGO, 'lo-que-sea')
+    assert r['post'] == '2026-01-25'
+    assert r['evaluacion'] == 'inicial'
+
+
+def test_los_umbrales_de_dnbr_estan_en_unidades_de_indice():
+    """La trampa de esta tabla, y da un fallo SILENCIOSO.
+
+    La literatura publica los umbrales multiplicados por 1000 --«100 a
+    270»--. Aqui el NBR se calcula en unidades de indice, de modo que
+    los mismos cortes son 0.100 a 0.270. Con los valores x1000 ningun
+    dNBR real alcanzaria el primer corte y TODO saldria «sin quemar»:
+    un mapa plausible y completamente equivocado.
+    """
+    cortes = [hi for _n, _lo, hi in core.CLASES_DNBR if hi is not None]
+    assert cortes == [0.100, 0.270, 0.440, 0.660], cortes
+    assert all(abs(c) < 1.0 for c in cortes), 'parecen estar x1000'
+    # Contiguos, sin huecos ni solapes.
+    for (_n1, _l1, hi), (_n2, lo2, _h2) in zip(core.CLASES_DNBR,
+                                               core.CLASES_DNBR[1:]):
+        assert hi == lo2, (hi, lo2)
+    # Abiertos en los dos extremos.
+    assert core.CLASES_DNBR[0][1] is None
+    assert core.CLASES_DNBR[-1][2] is None
+
+
+def test_el_tramo_de_dnbr_muestra_las_dos_unidades():
+    """Para que nadie tenga que adivinar si 0.27 o 270."""
+    txt = ' '.join(f[1] for f in core.clasificar_dnbr(np.zeros(4)))
+    assert '0.270' in txt and '270' in txt
+
+
+def test_clasificar_dnbr_cuenta_cada_clase_y_el_area():
+    # Un valor justo en cada tramo, mas dos NaN.
+    v = np.array([0.0, 0.15, 0.35, 0.55, 0.80, np.nan, np.nan])
+    filas = core.clasificar_dnbr(v, 400.0)      # pixel de 20 m
+    assert len(filas) == len(core.CLASES_DNBR)
+    # Un pixel por clase, y los NaN fuera del recuento.
+    for fila in filas:
+        assert fila[2] == '1', fila
+        assert fila[3] == '20.0', fila          # 1 de 5 validos
+    # 1 pixel de 400 m2 = 0.04 ha
+    assert filas[0][4] == '0.04', filas[0]
+
+
+def test_clasificar_dnbr_no_mete_los_nan_en_sin_quemar():
+    """Un NaN es nube o falta de dato en alguna de las dos fechas.
+
+    Contarlo como «sin quemar» inflaria justo la clase que ya recoge de
+    todo --y es la que alguien usaria para decir que no hubo dano--.
+    """
+    filas = core.clasificar_dnbr(np.full(100, np.nan), 400.0)
+    assert all(f[2] == '0' for f in filas), filas
+    assert all(f[3] == '0.0' for f in filas)
+
+
+def test_clasificar_dnbr_sin_tamano_de_pixel_omite_el_area():
+    filas = core.clasificar_dnbr(np.array([0.5]), None)
+    assert all(f[4] == '' for f in filas)
+
+
+def test_las_condiciones_de_uso_del_dnbr_estan_escritas():
+    """Una tabla de umbrales sin sus condiciones es una invitacion a
+    aplicarla donde no vale. Se exigen las que ya costaron discusion."""
+    texto = ' '.join(t + ' ' + d for t, d in core.CONDICIONES_DNBR).lower()
+    assert 'mismo sensor' in texto
+    assert 'pre menos post' in texto
+    assert 'ampl_nbr' in texto, 'hay que decir que NO se aplican a AMPL_NBR'
+    assert 'cbi' in texto, 'de donde salen los umbrales'
+    assert 'fenología' in texto or 'fenologia' in texto, (
+        'fuera del area quemada el dNBR no es cero')
+
+
+def test_el_informe_saca_el_dnbr_solo_cuando_se_calculo():
+    """Sin dNBR, ni la tabla de severidad ni sus condiciones.
+
+    Mismo criterio que con los tramos de NDVI: el informe no habla de
+    lo que no hizo. Y las condiciones sin la tabla serian texto
+    colgando de nada.
+    """
+    base = {'titulo': 'T', 'generado': 'G', 'generado_por': 'P',
+            'distribucion': [core._fila_estadisticas(
+                'NBR', '2026-01-09',
+                core.estadisticas_indice(np.linspace(-1, 1, 40)))]}
+    # Se ancla en el ENCABEZADO de la seccion y no en la frase: «severidad
+    # de quema» aparece tambien en la guia del NBR --«una sola fecha NO
+    # mide severidad de quema»--, de modo que un substring suelto da un
+    # falso positivo.
+    sin = core.informe_indices_html(base)
+    assert 'dNBR — severidad de quema' not in sin
+    assert 'Key y Benson' not in sin
+    assert 'condiciones bajo las que' not in sin
+
+    con = core.informe_indices_html(dict(
+        base, dnbr_clases=core.clasificar_dnbr(np.array([0.5]), 400.0),
+        dnbr_escenas=[('Fecha del incendio', '2026-01-15')]))
+    assert 'dNBR — severidad de quema' in con
+    assert 'Key y Benson' in con
+    assert 'condiciones bajo las que' in con
+    # Y las condiciones completas, no un resumen.
+    for titulo, _d in core.CONDICIONES_DNBR:
+        assert titulo in con, titulo
+
+
+def test_el_informe_de_dnbr_avisa_del_perimetro():
+    """El error de uso mas probable: contar areas sobre la escena
+    entera. Fuera del incendio el dNBR tampoco es cero."""
+    con = core.informe_indices_html({
+        'titulo': 'T', 'generado': 'G', 'generado_por': 'P',
+        'distribucion': [], 'dnbr_clases': core.clasificar_dnbr(
+            np.array([0.5]), 400.0)})
+    assert 'perímetro del incendio' in con

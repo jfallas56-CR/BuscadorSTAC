@@ -1,6 +1,6 @@
 # Buscador STAC: Sentinel, Landsat y Esri Wayback
 
-![version](https://img.shields.io/badge/version-1.8.1-blue)
+![version](https://img.shields.io/badge/version-1.9.0-blue)
 ![QGIS](https://img.shields.io/badge/QGIS-%E2%89%A5%203.28-green)
 ![licencia](https://img.shields.io/badge/licencia-GPL%20v2%2B-orange)
 
@@ -209,6 +209,49 @@ que sugerían longitudes de onda distintas.
   se derivaron de su área: para decidir clases valen la tabla de su escena y
   la verdad de campo. Y solo se dan para NDVI, porque para los demás índices
   no circulan rangos comparables e inventarlos sería peor que no tenerlos.
+
+- **Severidad de quema (dNBR)**, marcando «Calcular dNBR» y dando la fecha del
+  incendio. Resta el NBR de una escena posterior al de una anterior —en ese
+  orden, de modo que una quema sale **positiva**— y el informe reparte el
+  resultado en las cinco clases de **Key y Benson (2006)**, las del manual
+  FIREMON del USFS que usan el EFFIS de Copernicus y el MTBS, con el área de
+  cada una. Requiere NBR marcado.
+
+  | Clase | dNBR | ×1000 |
+  |---|---|---|
+  | Sin quemar o rebrote | < 0.100 | < 100 |
+  | Severidad baja | 0.100 – 0.270 | 100 – 270 |
+  | Severidad moderada-baja | 0.270 – 0.440 | 270 – 440 |
+  | Severidad moderada-alta | 0.440 – 0.660 | 440 – 660 |
+  | Severidad alta | ≥ 0.660 | ≥ 660 |
+
+  La columna ×1000 está porque la literatura los publica así, escalados a
+  enteros. Confundir las dos no da error: da un mapa en el que **todo** sale
+  «sin quemar», porque ningún dNBR real alcanza 100 en unidades de índice.
+
+  Dos **evaluaciones**, definidas en el mismo trabajo y midiendo cosas
+  distintas, de ahí que la elija usted: la **inicial** toma la escena
+  despejada más próxima después del fuego y recoge el carbón y la ceniza
+  recientes; la **extendida** busca la más cercana a un año después y recoge
+  la mortalidad diferida y lo que sobrevivió al primer rebrote — es la que
+  usa el MTBS para la mayoría de sus incendios, así que es la comparable con
+  cartografía de severidad publicada. El informe dice cuál se usó y cuántos
+  días pasaron de verdad. Una escena del mismo día del incendio se descarta
+  de las dos listas: el fuego pudo estar activo durante la toma.
+
+  **Condiciones de uso**, que el informe lista enteras: mismo sensor en las
+  dos fechas; las dos escenas despejadas sobre el área quemada; la resta es
+  pre menos post; los umbrales se calibraron contra índice de severidad de
+  campo (CBI) en bosques de Norteamérica, así que en otra vegetación
+  conservan el orden pero no necesariamente los cortes; y **fuera del
+  perímetro del incendio el dNBR tampoco es cero**, porque entre las dos
+  fechas la vegetación sana cambia por fenología, riego o cosecha — sobre
+  una escena completa la clase «severidad baja» recoge media imagen, así que
+  delimite el perímetro antes de informar áreas.
+
+  **No es lo mismo que `AMPL_NBR`.** La amplitud estacional resta dos NBR
+  igual, pero de estación seca y lluviosa sobre cubierta que no se quemó:
+  mide el ciclo anual, y los umbrales de severidad no le aplican.
 
 - Recuento de observaciones válidas por píxel y estación (capa `_NOBS`), con
   umbral mínimo configurable: un píxel sustentado en una sola observación no
@@ -674,6 +717,7 @@ Copyright © 2026 Jorge Fallas <jfallas56@gmail.com>
 
 | Versión | Fecha | Cambios |
 |---|---|---|
+| 1.9.0 | 2026-10-12 | **dNBR**: severidad de quema entre una fecha anterior y otra posterior al incendio, con las cinco clases de Key y Benson (2006) y el área de cada una. Evaluación inicial o extendida. Los umbrales van en unidades de índice y ×1000, porque confundirlas da un mapa donde todo sale «sin quemar». Con sus condiciones de uso listadas enteras, incluida la de que fuera del perímetro el dNBR tampoco es cero. |
 | 1.8.1 | 2026-10-12 | Seis correcciones de redacción en el texto nuevo del informe —la primera reportada por el usuario— y NDRE/CIre pasan de «Clorofila» a **indicador relativo de clorofila**, con el aviso de que no son una medida de contenido. |
 | 1.8.0 | 2026-10-12 | Guía de **cómo se lee cada índice** en el informe: qué mide, qué es alto, qué es bajo y de qué se confunde, para los once. Direcciones y no tramos, porque la dirección está establecida y los límites de clase no. Y el informe habla **solo de los índices pedidos**: 1.7.0 sacaba los tramos de NDVI siempre, incluso a quien solo había calculado NDMI. |
 | 1.7.0 | 2026-10-12 | **Informe de distribución** (`indices_distribucion.html`): percentiles de cada índice y escena sobre los píxeles válidos del recorte, para saber si un valor es alto o bajo **ahí** en vez de consultarlo en una tabla ajena. Con rangos orientativos de NDVI por cubierta, pocos y anchos, con la lectura alternativa de cada tramo en su propia columna y la zona de saturación dicha donde ocurre. |

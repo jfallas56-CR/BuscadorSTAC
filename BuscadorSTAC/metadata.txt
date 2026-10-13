@@ -8,7 +8,7 @@ about=[ENGLISH SUMMARY]
     Processing algorithms: (1) search and download Sentinel-2 and Landsat from
     public STAC catalogues, reading data as COG over /vsicurl/, with cloud cover
     measured INSIDE the area of interest rather than over the 110 km tile, eight
-    RGB band combinations, eleven spectral indices with a distribution report
+    RGB band combinations, eleven spectral indices with a distribution report, dNBR burn severity with the Key & Benson (2006) FIREMON classes,
     (per-scene percentiles, so a value can be read against its own scene
     rather than a generic lookup table) and a dry-minus-wet seasonal
     amplitude; (2) Esri World Imagery, current and historical (Wayback archive);
@@ -27,7 +27,7 @@ about=[ENGLISH SUMMARY]
 
     [RESUMEN EN ESPANOL]
     Cuatro algoritmos de Processing. El primero consulta catalogos STAC publicos (Element84 Earth Search, Microsoft Planetary Computer) y trabaja los datos por COG sobre /vsicurl/, sin descargas innecesarias.
-    Funciones principales: capa vectorial de huellas con metadatos e hoja de contactos HTML para revisar escenas antes de descargar; nubosidad medida DENTRO del AOI con SCL (Sentinel-2) o QA_PIXEL (Landsat), no la del mosaico de 110 km; carga de recursos remotos por /vsicurl/ o descarga de recortes GeoTIFF comprimidos; ocho composiciones RGB; once indices espectrales (NDVI, SAVI, EVI2, NDMI, NBR, MSI, NDRE, CIre y Tasseled Cap brillo/verdor/humedad con coeficientes por sensor); amplitud fenologica estacional por mediana con recuento de observaciones por pixel; informe HTML de distribucion con los percentiles de cada indice y escena sobre el propio recorte, mas rangos orientativos de NDVI por cubierta dichos como lo que son; y simbologia comparable entre fechas (media +- N sigma, limites fijos, paletas divergentes ancladas en cero).
+    Funciones principales: capa vectorial de huellas con metadatos e hoja de contactos HTML para revisar escenas antes de descargar; nubosidad medida DENTRO del AOI con SCL (Sentinel-2) o QA_PIXEL (Landsat), no la del mosaico de 110 km; carga de recursos remotos por /vsicurl/ o descarga de recortes GeoTIFF comprimidos; ocho composiciones RGB; once indices espectrales (NDVI, SAVI, EVI2, NDMI, NBR, MSI, NDRE, CIre y Tasseled Cap brillo/verdor/humedad con coeficientes por sensor); amplitud fenologica estacional por mediana con recuento de observaciones por pixel; severidad de quema dNBR con las cinco clases de Key y Benson (2006) del manual FIREMON, en evaluacion inicial o extendida, con area por clase y las condiciones de uso; informe HTML de distribucion con los percentiles de cada indice y escena sobre el propio recorte, mas rangos orientativos de NDVI por cubierta dichos como lo que son; y simbologia comparable entre fechas (media +- N sigma, limites fijos, paletas divergentes ancladas en cero).
     Los calculos se hacen sobre reflectancia leyendo escala y desplazamiento de raster:bands, incluido el desplazamiento BOA de la linea base 04.00 de Sentinel-2 y el termino aditivo de Landsat Collection 2, que no se cancelan en un cociente.
     Sin credenciales para Earth Search. Planetary Computer usa un token SAS anonimo gratuito que el complemento solicita y renueva por si mismo.
     El segundo algoritmo trae imagenes Esri World Imagery, actuales e historicas (archivo Wayback desde 2014), recortadas al AOI: alta resolucion para fotointerpretar arboles aislados, que a 10-20 m son subpixel. Detecta que versiones del archivo cambian realmente sobre el area y da la fecha de captura real de cada una, no la de publicacion del mosaico.
@@ -35,7 +35,7 @@ about=[ENGLISH SUMMARY]
     El cuarto exporta la capa elegida a KMZ y la abre en Google Earth. Un raster se RENDERIZA antes con la simbologia que se ve en QGIS, porque KML no guarda valores sino imagenes pegadas al terreno: volcar un GeoTIFF de NDVI sin renderizar daria una imagen gris ilegible. Lo vectorial va por LIBKML y conserva los atributos; indicando un campo de fecha, cada entidad sale con su TimeStamp y Google Earth muestra el control deslizante de tiempo, util para recorrer una serie de huellas en vez de verlas encimadas. El KMZ lo leen todas las versiones de Google Earth, pero abrirlo solo se puede automatizar en la de escritorio: Earth Web y las apps moviles no permiten que otra aplicacion les entregue un archivo, de modo que para esas el algoritmo deja el archivo y dice como importarlo.
     Numeros: punto para los decimales y espacio para los millares, nunca coma, de modo que las cifras del registro se pegan sin retoques en un campo de extension o de SRC de QGIS, en la consola de Python o en una hoja de calculo. El parametro «Limites fijos min,max» parte su entrada por la coma, asi que ahi una coma decimal se leeria como otro rango sin dar error.
     Datos: Copernicus Sentinel-1 y Sentinel-2 (ESA) y Landsat Collection 2 (USGS/NASA), de acceso abierto; productos RTC generados por ASF DAAC HyP3 con software GAMMA, que requiere una cuenta gratuita de Earthdata Login. Las imagenes de Esri NO son dato abierto: se rigen por el Esri Master License Agreement.
-version=1.8.1
+version=1.9.0
 author=Jorge Fallas
 email=jfallas56@gmail.com
 tracker=https://github.com/jfallas56-CR/BuscadorSTAC/issues
@@ -43,12 +43,66 @@ repository=https://github.com/jfallas56-CR/BuscadorSTAC
 homepage=https://github.com/jfallas56-CR/BuscadorSTAC
 category=Raster
 icon=icon.png
-tags=esri,world imagery,wayback,historical imagery,imagenes historicas,basemap,xyz,tms,alta resolucion,sentinel,sentinel-1,sentinel-2,landsat,sar,radar,rtc,hyp3,asf,backscatter,retrodispersion,gamma0,rvi,polarimetria,vh,vv,earthdata,stac,cog,raster,remote sensing,teledeteccion,ndvi,ndmi,nbr,savi,ndre,tasseled cap,indices espectrales,spectral index,phenology,fenologia,forest,bosque,dosel,canopy,cloud mask,scl,qa_pixel,vsicurl,earth search,planetary computer,download,descarga,costa rica,processing,google earth,kml,kmz,export,exportar,superoverlay,ground overlay
+tags=dnbr,severidad de quema,burn severity,incendio,fire,firemon,key benson,esri,world imagery,wayback,historical imagery,imagenes historicas,basemap,xyz,tms,alta resolucion,sentinel,sentinel-1,sentinel-2,landsat,sar,radar,rtc,hyp3,asf,backscatter,retrodispersion,gamma0,rvi,polarimetria,vh,vv,earthdata,stac,cog,raster,remote sensing,teledeteccion,ndvi,ndmi,nbr,savi,ndre,tasseled cap,indices espectrales,spectral index,phenology,fenologia,forest,bosque,dosel,canopy,cloud mask,scl,qa_pixel,vsicurl,earth search,planetary computer,download,descarga,costa rica,processing,google earth,kml,kmz,export,exportar,superoverlay,ground overlay
 hasProcessingProvider=yes
 experimental=False
 deprecated=False
 server=False
-changelog=1.8.1 (2026-10-12) Redaccion del informe, y la clorofila en su sitio.
+changelog=1.9.0 (2026-10-12) dNBR: severidad de quema antes/despues.
+    Marcando «Calcular dNBR» y dando la fecha del incendio, el algoritmo
+    resta el NBR de una escena posterior al de una anterior y escribe la
+    diferencia como capa propia. La resta es ANTES menos DESPUES, de modo
+    que una quema sale POSITIVA: es el signo con el que estan publicados
+    los umbrales. Requiere NBR marcado, y se comprueba en
+    checkParameterValues y no a medio camino.
+    El informe reparte el resultado en las cinco clases de Key y Benson
+    (2006), «Landscape Assessment» del manual FIREMON del USFS, adoptadas
+    entre otros por el EFFIS de Copernicus y el MTBS, con pixeles,
+    porcentaje y hectareas por clase.
+    UNIDADES, que es la trampa de esa tabla: la literatura publica los
+    umbrales multiplicados por 1000 --«100 a 270»--, y aqui el NBR esta en
+    unidades de indice, de modo que los mismos cortes son 0.100 a 0.270.
+    Confundirlos NO da error: da un mapa en el que todo sale «sin quemar»,
+    porque ningun dNBR real llega a 100 en unidades de indice. El informe
+    muestra las dos formas en la misma columna y una prueba fija que los
+    cortes sigan por debajo de 1.
+    DOS EVALUACIONES, porque estan definidas en el mismo trabajo y miden
+    cosas distintas: la INICIAL toma la escena despejada mas proxima
+    despues del fuego --carbon y ceniza recientes-- y la EXTENDIDA busca la
+    mas cercana a un ano despues --mortalidad diferida y lo que sobrevivio
+    al primer rebrote--. La extendida es la que usa el MTBS para la mayoria
+    de sus incendios, asi que es la comparable con cartografia publicada.
+    El informe dice cual se uso y cuantos dias pasaron de verdad; si pidio
+    la extendida y la escena mas cercana al ano esta a menos de 180 dias,
+    el registro lo advierte en vez de dejarlo pasar.
+    La escena del MISMO dia del incendio se descarta de las dos listas a
+    proposito: el fuego pudo estar activo durante la toma, y entonces no es
+    ni el antes ni el despues. Si falta un lado, el aviso dice hacia donde
+    ampliar el rango de fechas.
+    CONDICIONES DE USO, listadas enteras en el informe, porque una tabla de
+    umbrales sin sus condiciones es una invitacion a aplicarla donde no
+    vale: mismo sensor en las dos fechas; las dos escenas despejadas sobre
+    el area quemada; la resta es pre menos post; los umbrales se calibraron
+    contra indice de severidad de campo (CBI) en bosques de Norteamerica,
+    de modo que en otra vegetacion conservan el orden pero no
+    necesariamente los cortes; y FUERA DEL PERIMETRO del incendio el dNBR
+    tampoco es cero, porque entre las dos fechas la vegetacion sana cambia
+    por fenologia, riego o cosecha -- sobre una escena completa la clase
+    «severidad baja» recoge media imagen, asi que hay que delimitar el
+    perimetro antes de informar areas.
+    Y se dice explicitamente que NO se aplican a AMPL_NBR, que resta dos
+    NBR igual pero mide el ciclo estacional de cubierta que no se quemo.
+    Trasladar los umbrales de una a la otra es el error de autoridad falsa
+    que este complemento viene corrigiendo.
+    La eleccion de escenas y la clasificacion viven en core.py --logica
+    pura, probada sin QGIS, con GDAL no disponible en el entorno de
+    desarrollo-- y en el algoritmo queda solo abrir, alinear, restar y
+    escribir. Quince pruebas, incluidos los casos de borde: escena del dia
+    del fuego, falta de un lado, fechas repetidas o ilegibles, evaluacion
+    desconocida, y que los NaN no caigan en «sin quemar» --esa es la clase
+    que alguien usaria para decir que no hubo dano--.
+    
+    1.8.1 (2026-10-12) Redaccion del informe, y la clorofila en su sitio.
     Seis correcciones de redaccion en el texto nuevo de 1.7.0 y 1.8.0. La
     primera la reporto el usuario y las demas salieron de releer el texto
     plano del informe, que es como lo lee quien lo abre:

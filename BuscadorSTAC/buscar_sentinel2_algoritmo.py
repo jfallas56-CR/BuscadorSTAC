@@ -27,9 +27,13 @@ No requiere credenciales para Earth Search. Planetary Computer usa un
 token SAS anónimo gratuito que el algoritmo solicita automáticamente.
 
 Autor  : Jorge Fallas (jfallas56@gmail.com)
-Versión: 1.8.1
+Versión: 1.9.0
 
 Historial:
+    1.9.0 (2026-10-12): dNBR --severidad de quema entre una fecha
+        anterior y otra posterior al incendio-- con las cinco clases de
+        Key y Benson (2006), evaluacion inicial o extendida, area por
+        clase y las condiciones bajo las que los umbrales valen.
     1.8.0 (2026-10-12): Guia de como se lee cada indice en el informe
         --que mide, alto, bajo y de que se confunde-- y el informe
         habla solo de los indices pedidos: 1.7.0 sacaba los tramos de
@@ -121,7 +125,9 @@ from .core import (
     _periodos_sin_datos, _procedencia_huellas, _reducir_por_periodo,
     _res_nativa, _salida_volatil, _tamano_salida, _validar_ortonormalidad,
     CLAVES_BANDAS, ETIQUETAS_BANDAS, NOTA_NUMEROS, SIN_EQUIVALENTE_LS,
-    _fila_estadisticas, alias_banda, bandas_duplicadas, composiciones_vetadas,
+    EVALUACIONES_DNBR,
+    _a_fecha, _fila_estadisticas, alias_banda, bandas_duplicadas,
+    clasificar_dnbr, composiciones_vetadas, elegir_escenas_dnbr,
     estadisticas_indice, etiqueta_banda, evi2, informe_indices_html,
     miles, sufijo_banda)
 
@@ -1011,7 +1017,7 @@ def _geom_desde_geojson(gj):
 # --------------------------------------------------------------------------
 class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
 
-    VERSION = 'v1.8.1'
+    VERSION = 'v1.9.0'
 
     # Lógica pura, definida en core.py y reenganchada aquí como
     # staticmethod. Así cada sitio de llamada sigue siendo
@@ -1064,6 +1070,10 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
     _indices_escritos = None
     # Filas ya formateadas de la tabla de distribución del informe.
     _dist_indices = None
+    # Clases de severidad del dNBR y la elección de escenas, para
+    # el informe. None mientras no se haya pedido dNBR.
+    _dnbr_clases = None
+    _dnbr_info = None
     # Amplitudes a cargar en postProcessAlgorithm. Ver
     # _cargar_pendientes: addLayerToLoadOnCompletion no las
     # mostraba y no dejaba rastro de por que.
@@ -1089,6 +1099,9 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
     ESTIRAR = 'ESTIRAR'
     INDICES = 'INDICES'
     AMPLITUD = 'AMPLITUD'
+    DNBR = 'DNBR'
+    FECHA_INCENDIO = 'FECHA_INCENDIO'
+    EVALUACION = 'EVALUACION'
     MIN_OBS = 'MIN_OBS'
     MESES_SECA = 'MESES_SECA'
     MESES_LLUVIA = 'MESES_LLUVIA'
@@ -1226,6 +1239,23 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             "confunde— y, si pidió NDVI, rangos <i>orientativos</i> por "
             "tipo de cubierta con la lectura alternativa de cada tramo al "
             "lado. Solo aparecen los índices que pidió.<br><br>"
+            "<b>Severidad de quema (dNBR).</b> Marcando «Calcular dNBR» y "
+            "dando la fecha del incendio, el algoritmo resta el NBR de una "
+            "escena posterior al de una anterior y reparte el resultado en "
+            "las cinco clases de Key y Benson (2006) —las del manual "
+            "FIREMON que usan el EFFIS y el MTBS—, con el área de cada una. "
+            "Elija entre evaluación <i>inicial</i> (la escena más próxima "
+            "después: carbón y ceniza recientes) y <i>extendida</i> (≈1 año "
+            "después: mortalidad diferida, y la comparable con cartografía "
+            "publicada). Requiere NBR marcado.<br>"
+            "Dos cosas que conviene saber antes de informar cifras: los "
+            "umbrales <b>no</b> se aplican a AMPL_NBR, que resta dos NBR "
+            "igual pero mide el ciclo estacional de cubierta no quemada; y "
+            "<b>fuera del perímetro del incendio el dNBR tampoco es cero</b>, "
+            "porque entre las dos fechas la vegetación sana también cambia, "
+            "de modo que sobre una escena completa la clase «severidad baja» "
+            "recoge media imagen. El informe lista todas las "
+            "condiciones.<br><br>"
             "<b>Si la amplitud sale vacía</b>, el aviso distingue la causa: "
             "una estación entera nublada, «Mínimo de observaciones por píxel» "
             "demasiado alto (indica el valor que sí funcionaría), o escenas "
@@ -1705,6 +1735,73 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             'de ahí que se distingan.'))
         self.addParameter(p)
 
+        p = QgsProcessingParameterBoolean(
+            self.DNBR,
+            self.tr('Calcular dNBR (severidad de quema, antes − después)'),
+            defaultValue=False)
+        p.setHelp(self.tr(
+            'Resta el NBR de una escena posterior al fuego al de una '
+            'anterior, píxel a píxel, y escribe la diferencia como capa '
+            'independiente (prefijo <code>dNBR</code>). <b>Requiere que '
+            'marque NBR</b> en «Índices espectrales».<br>'
+            'Una quema sale POSITIVA, porque la resta es antes − después. El '
+            'informe reparte el resultado en las cinco clases de severidad '
+            'de Key y Benson (2006), las del manual FIREMON del USFS que usan '
+            'el EFFIS de Copernicus y el MTBS, y da el área de cada una.<br>'
+            '<b>Esto no es lo mismo que la amplitud estacional.</b> AMPL_NBR '
+            'también resta dos NBR, pero de estación seca y lluviosa sobre '
+            'cubierta que no se quemó: mide el ciclo anual, y los umbrales '
+            'de severidad no le aplican.<br>'
+            '<b>Antes de informar áreas por clase, delimite el perímetro del '
+            'incendio.</b> Fuera del área quemada el dNBR tampoco es cero — '
+            'entre las dos fechas la vegetación sana cambia por fenología, '
+            'riego o cosecha —, de modo que sobre una escena completa la '
+            'clase «severidad baja» recoge media imagen. El informe lista '
+            'todas las condiciones bajo las que los umbrales significan '
+            'algo.'))
+        self.addParameter(p)
+
+        p = QgsProcessingParameterString(
+            self.FECHA_INCENDIO,
+            self.tr('Fecha del incendio (AAAA-MM-DD, solo para dNBR)'),
+            defaultValue='', optional=True)
+        p.setHelp(self.tr(
+            'Parte las escenas en antes y después. La anterior se toma '
+            'siempre lo más cerca posible del fuego: cuanto más cerca, menos '
+            'cambio ajeno al incendio entra en la resta.<br>'
+            'Una escena de ESTE MISMO día se descarta de las dos listas, a '
+            'propósito: el fuego pudo estar activo durante la toma, y '
+            'entonces no es ni el antes ni el después.<br>'
+            'Si no hay escenas a los dos lados de la fecha, el algoritmo lo '
+            'dice y hacia qué lado hay que ampliar el rango.'))
+        self.addParameter(p)
+
+        p = QgsProcessingParameterEnum(
+            self.EVALUACION,
+            self.tr('Evaluación de severidad (solo para dNBR)'),
+            options=[
+                self.tr('Inicial — la escena despejada más próxima después '
+                        'del fuego'),
+                self.tr('Extendida — una estación de crecimiento después '
+                        '(≈1 año)')],
+            defaultValue=0)
+        p.setHelp(self.tr(
+            'Las dos están definidas en el mismo trabajo y <b>miden cosas '
+            'distintas</b>, de ahí que lo elija usted.<br>'
+            '• <b>Inicial</b>: recoge el carbón y la ceniza recién '
+            'depositados. Es el efecto inmediato del fuego, y la única '
+            'posible si necesita una respuesta en días.<br>'
+            '• <b>Extendida</b>: busca la escena más cercana a un año '
+            'después. Recoge la mortalidad diferida y lo que de verdad '
+            'sobrevivió al primer rebrote, de modo que se parece más a lo '
+            'que un inventario de campo encontraría. Es la que usa el MTBS '
+            'para la mayoría de sus incendios, así que es la comparable con '
+            'cartografía de severidad publicada.<br>'
+            'El informe dice cuál se usó y cuántos días pasaron de verdad '
+            'entre el fuego y la escena posterior: si pidió la extendida y '
+            'solo había una escena de hace dos semanas, eso se ve.'))
+        self.addParameter(p)
+
         p = QgsProcessingParameterNumber(
             self.MIN_OBS,
             self.tr('Mínimo de observaciones válidas por píxel y estación'),
@@ -2014,6 +2111,31 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
                 f"creciente, por ejemplo -0.1,0.5. Déjelo vacío para que cada "
                 f"capa calcule los suyos."
             )
+        if self.parameterAsBool(parameters, self.DNBR, context):
+            sufijos = [INDICES_ESPECTRALES[i][1] for i in indices_sel]
+            if 'NBR' not in sufijos:
+                return False, (
+                    "[!] El dNBR es una resta de dos NBR, así que hace falta "
+                    "el NBR. Marque «NBR — estructura y quema (NIR, SWIR2)» "
+                    "en «Índices espectrales»."
+                )
+            texto_fecha = self.parameterAsString(
+                parameters, self.FECHA_INCENDIO, context)
+            if not str(texto_fecha or '').strip():
+                return False, (
+                    "[!] Indique la fecha del incendio en «Fecha del "
+                    "incendio (AAAA-MM-DD, solo para dNBR)». Sin ella no hay "
+                    "forma de saber qué escena es el antes y cuál el después."
+                )
+            if _a_fecha(texto_fecha) is None:
+                return False, (
+                    f"[!] «{texto_fecha}» no es una fecha que se pueda leer. "
+                    f"Use el formato AAAA-MM-DD, por ejemplo 2026-01-15."
+                )
+            # Que haya escenas a los dos lados no se puede saber aquí: el
+            # catálogo todavía no se ha consultado. Se comprueba al
+            # ejecutar, y el aviso dice hacia qué lado ampliar.
+
         if self.parameterAsBool(parameters, self.AMPLITUD, context):
             if not indices_sel:
                 return False, (
@@ -2286,6 +2408,8 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
         self._escala_reportada = set()
         self._indices_escritos = []
         self._dist_indices = []
+        self._dnbr_clases = None
+        self._dnbr_info = None
         self._pendientes_amplitud = []
         fuente_sel = self.parameterAsSource(parameters, self.SELECCION, context)
 
@@ -2665,6 +2789,14 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
                     self._amplitud_fenologica(
                         meses_seca, meses_lluvia, carpeta, context,
                         feedback, min_obs)
+                if self.parameterAsBool(parameters, self.DNBR, context):
+                    self._calcular_dnbr(
+                        carpeta,
+                        self.parameterAsString(
+                            parameters, self.FECHA_INCENDIO, context),
+                        EVALUACIONES_DNBR[self.parameterAsEnum(
+                            parameters, self.EVALUACION, context)],
+                        feedback)
                 self._escribir_informe_indices(
                     carpeta, items, indices, amplitud, meses_seca,
                     meses_lluvia, min_obs, feedback)
@@ -3946,6 +4078,8 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
                 '%Y-%m-%dT%H:%M:%SZ'),
             'generado_por': f'BuscadorSTAC {self.VERSION}',
             'distribucion': list(self._dist_indices),
+            'dnbr_clases': list(self._dnbr_clases or []),
+            'dnbr_escenas': self._filas_dnbr_informe(),
             'parametros': parametros,
             'entorno': [
                 ('QGIS', version_qgis),
@@ -3977,6 +4111,31 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             f'({miles(len(self._dist_indices))} fila(s)). Dice dónde cae '
             f'cada valor DENTRO de su escena, que es lo que una tabla de '
             f'rangos no puede decir.')
+
+    def _filas_dnbr_informe(self):
+        """Qué escenas entraron en el dNBR y con qué convención.
+
+        Va en el informe porque es lo que permite repetir el cálculo o
+        discutirlo: dos fechas, una convención y los días reales
+        transcurridos. Si pidió la evaluación extendida y solo había una
+        escena de dos semanas después, aquí se ve.
+        """
+        d = self._dnbr_info
+        if not d:
+            return []
+        nombres = {'inicial': 'Inicial (efecto inmediato)',
+                   'extendida': 'Extendida (≈1 año, mortalidad diferida)'}
+        return [
+            ('Fecha del incendio', d.get('incendio', '?')),
+            ('Evaluación', nombres.get(d.get('evaluacion'),
+                                       d.get('evaluacion', '?'))),
+            ('Escena anterior',
+             f"{d.get('pre')}  ({miles(d.get('dias_pre') or 0)} día(s) antes "
+             f"del incendio)"),
+            ('Escena posterior',
+             f"{d.get('post')}  ({miles(d.get('dias') or 0)} día(s) después)"),
+            ('Archivo', d.get('archivo', '?')),
+        ]
 
     def _anotar_distribucion(self, sufijo, escena, ruta, feedback):
         """Lee un índice ya escrito y anota su distribución para el informe.
@@ -4290,6 +4449,146 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
         feedback.pushInfo(
             f"  Grupos sustituidos: {', '.join(sorted(validos))}")
         return completo
+
+    def _calcular_dnbr(self, carpeta, fecha_incendio, evaluacion, feedback):
+        """dNBR: NBR de antes del fuego menos NBR de después.
+
+        La elección de escenas y la clasificación por severidad viven en
+        core --son lógica pura y allí se prueban sin QGIS--. Aquí queda
+        solo lo que necesita GDAL: abrir, alinear, restar y escribir.
+
+        La resta es ANTES − DESPUÉS para que una quema salga positiva,
+        que es el signo con el que están publicados los umbrales. Al
+        revés, la tabla de severidad no aplica y el mapa se lee
+        invertido.
+        """
+        nbr = [(r, f) for r, _m, s, f in (self._indices_escritos or [])
+               if s == 'NBR']
+        if not nbr:
+            feedback.pushWarning(
+                '[!] dNBR: no se escribió ningún NBR, así que no hay nada '
+                'que restar. Marque NBR en «Índices espectrales».')
+            return
+        por_fecha = dict((f, r) for r, f in nbr)
+        elec = elegir_escenas_dnbr(sorted(por_fecha), fecha_incendio,
+                                   evaluacion)
+        if elec.get('motivo'):
+            feedback.pushWarning(f'[!] dNBR: {elec["motivo"]}.')
+            return
+
+        pre_f, post_f = elec['pre'], elec['post']
+        feedback.pushInfo(
+            f'\ndNBR — evaluación {elec["evaluacion"]}: '
+            f'{pre_f} (−{elec["dias_pre"]} d) menos {post_f} '
+            f'(+{elec["dias"]} d del incendio {fecha_incendio})')
+        if elec['evaluacion'] == 'extendida' and elec['dias'] < 180:
+            feedback.pushWarning(
+                f'[!] Pidió evaluación extendida, pero la escena posterior '
+                f'más cercana al año está a {elec["dias"]} día(s) del '
+                f'incendio. Lo que sale se parece más a una evaluación '
+                f'inicial: amplíe el rango de fechas si quiere la '
+                f'extendida.')
+
+        temporales = []
+        try:
+            ds_pre = gdal.Open(por_fecha[pre_f])
+            if ds_pre is None:
+                raise RuntimeError(f'no se pudo abrir {por_fecha[pre_f]}')
+            geo = ds_pre.GetGeoTransform()
+            proj = ds_pre.GetProjection()
+            ancho, alto = ds_pre.RasterXSize, ds_pre.RasterYSize
+            arr_pre = ds_pre.GetRasterBand(1).ReadAsArray()
+            ds_pre = None
+
+            ds_post = gdal.Open(por_fecha[post_f])
+            if ds_post is None:
+                raise RuntimeError(f'no se pudo abrir {por_fecha[post_f]}')
+            mismo = (ds_post.GetProjection() == proj
+                     and ds_post.RasterXSize == ancho
+                     and ds_post.RasterYSize == alto)
+            if mismo:
+                arr_post = ds_post.GetRasterBand(1).ReadAsArray()
+                ds_post = None
+            else:
+                ds_post = None
+                tmp = os.path.join(QgsProcessingUtils.tempFolder(),
+                                   f'dnbr_{uuid.uuid4().hex[:8]}.tif')
+                alineado = gdal.Warp(
+                    tmp, por_fecha[post_f],
+                    options=gdal.WarpOptions(
+                        format='GTiff', dstSRS=proj,
+                        outputBounds=(geo[0], geo[3] + alto * geo[5],
+                                      geo[0] + ancho * geo[1], geo[3]),
+                        width=ancho, height=alto, resampleAlg='bilinear',
+                        dstNodata=float('nan')))
+                if alineado is None:
+                    raise RuntimeError(
+                        f'no se pudo alinear {os.path.basename(post_f)} a la '
+                        f'malla de {os.path.basename(pre_f)}')
+                arr_post = alineado.GetRasterBand(1).ReadAsArray()
+                alineado = None
+                temporales.append(tmp)
+
+            dnbr = arr_pre.astype('float64') - arr_post.astype('float64')
+            dnbr = np.where(np.isfinite(dnbr), dnbr, np.nan)
+
+            base = f'dNBR_{pre_f}_{post_f}_{elec["evaluacion"][:3]}'
+            destino = os.path.join(carpeta, f'{base}.tif')
+            driver = gdal.GetDriverByName('GTiff')
+            salida = driver.Create(
+                destino, ancho, alto, 1, gdal.GDT_Float32,
+                options=['COMPRESS=DEFLATE', 'PREDICTOR=3', 'TILED=YES'])
+            if salida is None:
+                raise RuntimeError('No se pudo crear el GeoTIFF')
+            salida.SetGeoTransform(geo)
+            salida.SetProjection(proj)
+            banda = salida.GetRasterBand(1)
+            banda.WriteArray(dnbr.astype(np.float32))
+            banda.SetNoDataValue(float('nan'))
+            banda.SetDescription('dNBR')
+            salida.FlushCache()
+            salida = None
+
+            # Área del píxel. Si la malla estuviera en grados el número no
+            # seria un area, asi que se omite en vez de dar hectareas
+            # inventadas. Los recortes conservan el UTM de la escena, de
+            # modo que el caso normal si tiene metros.
+            area_px = abs(geo[1] * geo[5])
+            if abs(geo[1]) < 0.01:
+                area_px = None
+                feedback.pushWarning(
+                    '[!] dNBR: la malla parece estar en grados, así que no '
+                    'se informan hectáreas por clase, solo píxeles.')
+
+            self._dnbr_clases = clasificar_dnbr(dnbr, area_px)
+            self._dnbr_info = dict(elec, incendio=str(fecha_incendio)[:10],
+                                   archivo=os.path.basename(destino))
+            self._dist_indices.append(_fila_estadisticas(
+                'dNBR', f'{pre_f} − {post_f}', estadisticas_indice(dnbr)))
+
+            validos = np.isfinite(dnbr)
+            feedback.pushInfo(
+                f'  dNBR → {os.path.basename(destino)}  '
+                f'[{np.nanmin(dnbr):.3f} … {np.nanmax(dnbr):.3f}], '
+                f'{100.0 * validos.mean():.0f} % de píxeles válidos'
+                if validos.any() else
+                f'  dNBR → {os.path.basename(destino)}: sin píxeles válidos')
+            for fila in self._dnbr_clases:
+                feedback.pushInfo(f'    {fila[0]:26} {fila[2]:>10} px'
+                                  + (f'  {fila[4]} ha' if fila[4] else ''))
+            feedback.pushInfo(
+                '  Las áreas valen solo dentro del perímetro del incendio: '
+                'fuera, el dNBR tampoco es cero porque la vegetación sana '
+                'cambia entre las dos fechas. El informe lista las demás '
+                'condiciones.')
+        except Exception as e:
+            feedback.pushWarning(f'[_calcular_dnbr] {e}')
+        finally:
+            for t in temporales:
+                try:
+                    os.remove(t)
+                except OSError as e:
+                    feedback.pushDebugInfo(f'[_calcular_dnbr] temporal: {e}')
 
     def _amplitud_fenologica(self, meses_seca, meses_lluvia, carpeta,
                              context, feedback, min_obs=3):
