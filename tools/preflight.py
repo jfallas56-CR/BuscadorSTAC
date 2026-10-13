@@ -996,6 +996,108 @@ def comp_padres_de_campo(inf):
         'tumbaria QGIS al abrir el dialogo: ' + '; '.join(malos))
 
 
+def comp_rasteres_sellados(inf):
+    """Todo raster que el complemento escribe lleva su procedencia.
+
+    El informe HTML se queda en la carpeta; un GeoTIFF se manda por
+    correo y se encuentra en un disco dos anos despues. Hasta 1.9.0 los
+    indices por escena llevaban SOLO el nombre del indice en la
+    descripcion de banda, y el dNBR ni las dos fechas que lo forman: un
+    mapa de severidad que no se podia comprobar.
+
+    Se cuentan los sitios que CREAN un raster --driver.Create, gdal.Warp
+    y gdal.Translate con un destino de salida-- y se exige que haya al
+    menos tantas llamadas a _sellar. Es una heuristica: no prueba que
+    cada archivo concreto quede sellado, pero detecta el caso que
+    importa, que es anadir un producto nuevo y olvidar su procedencia.
+    """
+    inf.seccion('Procedencia dentro de los rasteres')
+    ruta = os.path.join(DIR_PAQUETE, 'buscar_sentinel2_algoritmo.py')
+    try:
+        texto = _texto(ruta)
+        arbol = ast.parse(texto)
+    except (SyntaxError, OSError) as e:
+        inf.comprobar('se pudo leer el algoritmo optico', False, str(e))
+        return
+
+    # Metodos que escriben algo INTERMEDIO y por eso no se sellan. Es
+    # una lista declarada y no una heuristica sobre el texto: asi, cuando
+    # alguien anada un metodo que escriba un PRODUCTO nuevo, no estara en
+    # la lista y la comprobacion lo exigira. Una heuristica de cadenas
+    # --buscar «tmp» en la llamada-- dejaba pasar estos tres y habria
+    # dejado pasar tambien al siguiente producto sin sellar.
+    INTERMEDIOS = {
+        '_nubes_en_aoi':        'recorte de SCL en tempFolder para medir '
+                                'nube sobre el AOI',
+        '_mascara_nubes':       'recorte de la banda de calidad en '
+                                'tempFolder',
+        '_miniatura':           'PNG de vista previa para la hoja de '
+                                'contactos, no un raster de analisis',
+        '_miniatura_compuesta': 'vista previa para la hoja de contactos, '
+                                'no un raster de analisis',
+        '_percentiles_vrt':     'solo lee, para los cortes del realce',
+    }
+    metodos = [(n.lineno, n.end_lineno or n.lineno, n.name)
+               for n in ast.walk(arbol) if isinstance(n, ast.FunctionDef)]
+
+    def _duenno(linea):
+        cands = [m for m in metodos if m[0] <= linea <= m[1]]
+        return (sorted(cands, key=lambda m: m[1] - m[0])[0][2]
+                if cands else '?')
+
+    productos, sellados, sin_sellar = set(), set(), []
+    for nodo in ast.walk(arbol):
+        if not isinstance(nodo, ast.Call):
+            continue
+        nombre = getattr(nodo.func, 'attr', getattr(nodo.func, 'id', ''))
+        duenno = _duenno(nodo.lineno)
+        if nombre == '_sellar':
+            sellados.add(duenno)
+        elif nombre in ('Create', 'Warp', 'Translate'):
+            if duenno in INTERMEDIOS:
+                continue
+            productos.add(duenno)
+            if nodo.lineno:
+                sin_sellar.append((duenno, nodo.lineno))
+
+    faltos = sorted({d for d, _ln in sin_sellar} - sellados)
+    if not inf.comprobar(
+            f'se encontraron {len(productos)} metodo(s) que escriben un '
+            f'raster de producto', bool(productos)):
+        return
+    inf.comprobar(
+        f'los {len(productos)} metodo(s) de producto llaman a _sellar',
+        not faltos,
+        'escriben un raster sin procedencia: ' + ', '.join(faltos)
+        + '. Un GeoTIFF suelto tiene que poder explicarse solo; si lo que '
+          'escribe es intermedio, declarelo en INTERMEDIOS con su motivo')
+
+    # Y que la funcion comun siga existiendo y declarando sus claves.
+    try:
+        import importlib.util
+        _spec = importlib.util.spec_from_file_location(
+            '_core_proc', os.path.join(DIR_PAQUETE, 'core.py'))
+        _core = importlib.util.module_from_spec(_spec)
+        _spec.loader.exec_module(_core)
+    except Exception as e:                          # pragma: no cover
+        inf.comprobar('core.py se puede cargar suelto, sin QGIS', False,
+                      str(e))
+        return
+    faltan = [k for k in ('PRODUCTO', 'SENSOR', 'COLECCION', 'CATALOGO',
+                          'MASCARA_CALIDAD', 'RADIOMETRIA')
+              if k not in _core.CLAVES_PROCEDENCIA]
+    inf.comprobar('las claves comunes de procedencia estan declaradas',
+                  not faltan, 'faltan: ' + ', '.join(faltan))
+    # El nombre viejo del complemento no debe volver a un archivo.
+    viejo = 'buscar_sentinel2_cr' in texto.replace(
+        '# ', '').split('Historial:')[0]
+    inf.comprobar(
+        'ningun raster se sella con el nombre viejo del complemento',
+        'buscar_sentinel2_cr' not in texto or not viejo,
+        'la amplitud escribia GENERADO_POR: buscar_sentinel2_cr, el nombre '
+        'de antes del cambio', bloquea=False)
+
+
 def comp_guia_de_indices(inf):
     """Todo indice ofrecido tiene su fila de guia, y al reves.
 
@@ -1553,6 +1655,7 @@ def main(argv=None):
     comp_interfaz_en_espanol(inf)
     comp_claves_de_banda(inf)
     comp_padres_de_campo(inf)
+    comp_rasteres_sellados(inf)
     comp_guia_de_indices(inf)
     comp_convencion_numerica(inf)
     comp_ayuda_parametros(inf)

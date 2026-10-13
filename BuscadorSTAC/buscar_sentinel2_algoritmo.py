@@ -27,9 +27,13 @@ No requiere credenciales para Earth Search. Planetary Computer usa un
 token SAS anónimo gratuito que el algoritmo solicita automáticamente.
 
 Autor  : Jorge Fallas (jfallas56@gmail.com)
-Versión: 1.9.0
+Versión: 1.10.0
 
 Historial:
+    1.10.0 (2026-10-13): Procedencia dentro de cada raster --sensor,
+        coleccion, catalogo, nivel, mascara, origen de la escala,
+        fechas-- y una seccion «Archivos escritos» en el informe. El
+        informe se queda en la carpeta; un GeoTIFF viaja solo.
     1.9.0 (2026-10-12): dNBR --severidad de quema entre una fecha
         anterior y otra posterior al incendio-- con las cinco clases de
         Key y Benson (2006), evaluacion inicial o extendida, area por
@@ -125,11 +129,11 @@ from .core import (
     _periodos_sin_datos, _procedencia_huellas, _reducir_por_periodo,
     _res_nativa, _salida_volatil, _tamano_salida, _validar_ortonormalidad,
     CLAVES_BANDAS, ETIQUETAS_BANDAS, NOTA_NUMEROS, SIN_EQUIVALENTE_LS,
-    EVALUACIONES_DNBR,
+    EVALUACIONES_DNBR, LIMITES_INDICE,
     _a_fecha, _fila_estadisticas, alias_banda, bandas_duplicadas,
     clasificar_dnbr, composiciones_vetadas, elegir_escenas_dnbr,
     estadisticas_indice, etiqueta_banda, evi2, informe_indices_html,
-    miles, sufijo_banda)
+    metadatos_producto, miles, sufijo_banda)
 
 from osgeo import gdal
 
@@ -1017,7 +1021,7 @@ def _geom_desde_geojson(gj):
 # --------------------------------------------------------------------------
 class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
 
-    VERSION = 'v1.9.0'
+    VERSION = 'v1.10.0'
 
     # Lógica pura, definida en core.py y reenganchada aquí como
     # staticmethod. Así cada sitio de llamada sigue siendo
@@ -1074,6 +1078,12 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
     # el informe. None mientras no se haya pedido dNBR.
     _dnbr_clases = None
     _dnbr_info = None
+    # Inventario de archivos escritos, para el informe.
+    _inventario = None
+    # Catálogo elegido: etiqueta completa (lleva el estado de
+    # armonización en palabras) y endpoint.
+    _catalogo_etiqueta = None
+    _catalogo_url = None
     # Amplitudes a cargar en postProcessAlgorithm. Ver
     # _cargar_pendientes: addLayerToLoadOnCompletion no las
     # mostraba y no dejaba rastro de por que.
@@ -1238,7 +1248,15 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             "mide, qué es un valor alto, qué es uno bajo y de qué se "
             "confunde— y, si pidió NDVI, rangos <i>orientativos</i> por "
             "tipo de cubierta con la lectura alternativa de cada tramo al "
-            "lado. Solo aparecen los índices que pidió.<br><br>"
+            "lado. Solo aparecen los índices que pidió.<br>"
+            "El informe lleva además un <b>inventario de los archivos escritos</b>, "
+            "y esos mismos datos van <b>dentro de cada ráster</b>: sensor, "
+            "colección, catálogo, fecha de adquisición, máscara aplicada y de "
+            "dónde salió la escala. El informe se queda en la carpeta, pero un "
+            "GeoTIFF se manda por correo o aparece en un disco años después, y "
+            "entonces lo único que queda es lo que lleve dentro. Se leen con "
+            "<code>gdalinfo</code> o en QGIS con Propiedades de la capa → "
+            "Información.<br><br>"
             "<b>Severidad de quema (dNBR).</b> Marcando «Calcular dNBR» y "
             "dando la fecha del incendio, el algoritmo resta el NBR de una "
             "escena posterior al de una anterior y reparte el resultado en "
@@ -2349,6 +2367,8 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
         # ejecución (createInstance), así que no hay estado compartido.
         self._familia = familia
         self._coleccion_activa = coleccion
+        self._catalogo_etiqueta = etiqueta_cat
+        self._catalogo_url = base_url
 
         f_ini = self.parameterAsString(parameters, self.FECHA_INI, context).strip()
         f_fin = self.parameterAsString(parameters, self.FECHA_FIN, context).strip()
@@ -2410,6 +2430,7 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
         self._dist_indices = []
         self._dnbr_clases = None
         self._dnbr_info = None
+        self._inventario = []
         self._pendientes_amplitud = []
         fuente_sel = self.parameterAsSource(parameters, self.SELECCION, context)
 
@@ -2797,9 +2818,12 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
                         EVALUACIONES_DNBR[self.parameterAsEnum(
                             parameters, self.EVALUACION, context)],
                         feedback)
-                self._escribir_informe_indices(
-                    carpeta, items, indices, amplitud, meses_seca,
-                    meses_lluvia, min_obs, feedback)
+            # Fuera de «if indices:» a proposito: una ejecucion de solo
+            # descarga de bandas tambien escribe archivos, y su inventario
+            # es igual de util. Dentro del if, se recogia y no se escribia.
+            self._escribir_informe_indices(
+                carpeta, items, indices, amplitud, meses_seca,
+                meses_lluvia, min_obs, feedback)
             resultados[self.SALIDA] = carpeta
 
         self._resultados = resultados
@@ -3204,6 +3228,21 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
                     if ds is None:
                         raise RuntimeError('gdal.Warp devolvió None')
                     ds = None
+                    self._sellar(
+                        destino,
+                        f'Recorte de banda {sufijo_banda(banda, self._familia)}',
+                        extra={
+                            'BANDA': sufijo_banda(banda, self._familia),
+                            'BANDA_CLAVE': banda,
+                            'FECHA_ADQUISICION': str(
+                                item.get('properties', {}).get(
+                                    'datetime', ''))[:10],
+                            'ESCENA': str(item.get('id', '')),
+                            'NOTA': 'Valores en la escala nativa del '
+                                    'producto: aplique escala y '
+                                    'desplazamiento antes de calcular',
+                        },
+                        feedback=feedback)
                     tam = os.path.getsize(destino) / (1024 * 1024)
                     feedback.pushInfo(
                         f"  descargado → {os.path.basename(destino)} ({tam:.1f} MB)")
@@ -3395,6 +3434,19 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
                     raise RuntimeError('gdal.Translate devolvió None')
                 ds = None
 
+                self._sellar(
+                    destino, 'Composición RGB',
+                    extra={
+                        'FECHA_ADQUISICION': str(
+                            item.get('properties', {}).get(
+                                'datetime', ''))[:10],
+                        'ESCENA': str(item.get('id', '')),
+                        'REALCE': ('percentiles 2-98 a 8 bits' if estirar
+                                   else 'sin realce, valores nativos'),
+                        'NOTA': 'Capa de color para interpretacion visual, '
+                                'no de valores para calcular',
+                    },
+                    feedback=feedback)
                 tam = os.path.getsize(destino) / (1024 * 1024)
                 feedback.pushInfo(
                     f"  compuesto → {os.path.basename(destino)} ({tam:.1f} MB)")
@@ -4048,7 +4100,7 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
         No se escribe si no hay nada que informar: un informe vacío
         parece un resultado.
         """
-        if not self._dist_indices:
+        if not self._dist_indices and not self._inventario:
             return
         try:
             from qgis.core import Qgis
@@ -4073,11 +4125,14 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
                 ('Mínimo de observaciones por píxel', miles(min_obs)),
             ]
         datos = {
-            'titulo': 'Índices espectrales — distribución',
+            'titulo': ('Índices espectrales — distribución y procedencia'
+                       if self._dist_indices
+                       else 'Procedencia de los archivos escritos'),
             'generado': datetime.now(timezone.utc).strftime(
                 '%Y-%m-%dT%H:%M:%SZ'),
             'generado_por': f'BuscadorSTAC {self.VERSION}',
             'distribucion': list(self._dist_indices),
+            'inventario': list(self._inventario or []),
             'dnbr_clases': list(self._dnbr_clases or []),
             'dnbr_escenas': self._filas_dnbr_informe(),
             'parametros': parametros,
@@ -4111,6 +4166,75 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             f'({miles(len(self._dist_indices))} fila(s)). Dice dónde cae '
             f'cada valor DENTRO de su escena, que es lo que una tabla de '
             f'rangos no puede decir.')
+
+    def _resumen_radiometria(self):
+        """De dónde salió la escala y el desplazamiento de las bandas.
+
+        Es el dato de armonización que de verdad importa: si una banda
+        cayó al respaldo en vez de leer raster:bands, el valor del índice
+        depende de una constante supuesta y no de lo que declara el
+        catálogo. Si pasó en alguna banda, el archivo lo dice.
+        """
+        origenes = {o for _b, o in (self._escala_reportada or set())}
+        if not origenes:
+            return None
+        if all(str(o).startswith('raster:bands') for o in origenes):
+            return 'raster:bands (escala y desplazamiento del catálogo)'
+        respaldos = sorted(o for o in origenes
+                           if not str(o).startswith('raster:bands'))
+        return ('mixta — alguna banda usó respaldo: '
+                + '; '.join(respaldos))
+
+    def _procedencia(self, producto, extra=None):
+        """Metadatos comunes de esta ejecución, más los del producto."""
+        return metadatos_producto(
+            producto,
+            sensor=('Landsat' if self._familia == 'ls' else 'Sentinel-2'),
+            coleccion=self._coleccion_activa,
+            catalogo=self._catalogo_etiqueta,
+            catalogo_url=self._catalogo_url,
+            mascara=('QA_PIXEL' if self._familia == 'ls' else 'SCL'),
+            radiometria=self._resumen_radiometria(),
+            generado_por=f'BuscadorSTAC {self.VERSION}',
+            generado=datetime.now(timezone.utc).strftime(
+                '%Y-%m-%dT%H:%M:%SZ'),
+            extra=extra)
+
+    def _sellar(self, destino, producto, ds=None, extra=None, feedback=None):
+        """Escribe la procedencia en el ráster y lo anota en el inventario.
+
+        `destino` es siempre la ruta, porque el inventario necesita el
+        nombre. `ds` es el dataset ya abierto cuando el complemento acaba
+        de crearlo; sin él, el archivo se reabre en modo actualización,
+        que es el caso de los que salen de gdal.Warp o gdal.Translate.
+
+        Nunca aborta la ejecución: un archivo sin metadatos sigue siendo
+        un archivo útil, y perder el producto por no poder sellarlo seria
+        un intercambio malo. El fallo va al registro de depuración.
+        """
+        datos = self._procedencia(producto, extra)
+        try:
+            if ds is not None:
+                ds.SetMetadata(datos)
+            else:
+                propio = gdal.Open(destino, gdal.GA_Update)
+                if propio is None:
+                    raise RuntimeError('no se pudo reabrir para actualizar')
+                propio.SetMetadata(datos)
+                propio.FlushCache()
+                propio = None
+        except Exception as e:
+            if feedback is not None:
+                feedback.pushDebugInfo(
+                    f'[_sellar] {os.path.basename(str(destino))}: {e}')
+        if self._inventario is None:
+            self._inventario = []
+        self._inventario.append([
+            os.path.basename(str(destino)) or '—', producto,
+            datos.get('FECHA_ADQUISICION')
+            or datos.get('FECHAS_ADQUISICION') or '—',
+            datos.get('SENSOR', '—'), datos.get('MASCARA_CALIDAD', '—'),
+            datos.get('RADIOMETRIA', '—')])
 
     def _filas_dnbr_informe(self):
         """Qué escenas entraron en el dNBR y con qué convención.
@@ -4280,6 +4404,15 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
                     banda_out.WriteArray(valores.astype(np.float32))
                     banda_out.SetNoDataValue(float('nan'))
                     banda_out.SetDescription(sufijo)
+                    self._sellar(
+                        destino, f'Índice espectral {sufijo}', ds=salida,
+                        extra={'INDICE': sufijo,
+                               'FECHA_ADQUISICION':
+                                   str(props.get('datetime', ''))[:10],
+                               'ESCENA': str(item.get('id', '')),
+                               'RANGO_FISICO': str(
+                                   LIMITES_INDICE.get(sufijo, 'sin acotar'))},
+                        feedback=feedback)
                     salida.FlushCache()
                     salida = None
 
@@ -4546,6 +4679,21 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             banda.WriteArray(dnbr.astype(np.float32))
             banda.SetNoDataValue(float('nan'))
             banda.SetDescription('dNBR')
+            self._sellar(
+                destino, 'dNBR — severidad de quema', ds=salida,
+                extra={
+                    'FECHA_INCENDIO': str(fecha_incendio)[:10],
+                    'FECHA_PRE': pre_f, 'FECHA_POST': post_f,
+                    'FECHAS_ADQUISICION': f'{pre_f},{post_f}',
+                    'EVALUACION': elec['evaluacion'],
+                    'DIAS_DESPUES_DEL_FUEGO': str(elec['dias']),
+                    'SIGNO': 'antes menos despues (una quema sale positiva)',
+                    'UMBRALES': 'Key y Benson (2006), FIREMON; en unidades '
+                                'de indice: 0.100 / 0.270 / 0.440 / 0.660',
+                    'AVISO': 'Las areas por clase valen solo dentro del '
+                             'perimetro del incendio',
+                },
+                feedback=feedback)
             salida.FlushCache()
             salida = None
 
@@ -4771,22 +4919,32 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
                 banda.SetNoDataValue(float('nan'))
                 banda.SetDescription(
                     f'AMPL_{sufijo}  seca[{cod_seca}] - lluvia[{cod_lluvia}]')
-                salida.SetMetadata({
-                    'INDICE': sufijo,
-                    'SIGNO': 'seca menos lluvia',
-                    'MESES_SECA': ','.join(str(m) for m in sorted(meses_seca)),
-                    'MESES_LLUVIA': ','.join(
-                        str(m) for m in sorted(meses_lluvia)),
-                    'FECHAS_SECA': ','.join(fechas_seca),
-                    'FECHAS_LLUVIA': ','.join(fechas_lluvia),
-                    'N_ESCENAS_SECA': str(len(secas)),
-                    'N_ESCENAS_LLUVIA': str(len(lluvias)),
-                    'MIN_OBS_POR_PIXEL': str(min_obs),
-                    'ESTADISTICO': 'mediana por estacion',
-                    'COLECCION': str(self._coleccion_activa or ''),
-                    'GENERADO_POR': f'buscar_sentinel2_cr {self.VERSION}',
-                    'AUTOR': f'{AUTOR} <{AUTOR_EMAIL}>',
-                })
+                # Antes esto escribia su propio diccionario, con
+                # 'GENERADO_POR': 'buscar_sentinel2_cr' -- el nombre del
+                # complemento ANTES de renombrarlo. Pasar por _sellar lo
+                # corrige y anade sensor, catalogo, mascara y radiometria,
+                # que es justo lo que faltaba para interpretar el archivo
+                # suelto.
+                self._sellar(
+                    destino, f'Amplitud estacional {sufijo}', ds=salida,
+                    extra={
+                        'INDICE': sufijo,
+                        'SIGNO': 'seca menos lluvia',
+                        'ESTADISTICO': 'mediana por estacion',
+                        'MESES_SECA': ','.join(
+                            str(m) for m in sorted(meses_seca)),
+                        'MESES_LLUVIA': ','.join(
+                            str(m) for m in sorted(meses_lluvia)),
+                        'FECHAS_SECA': ','.join(fechas_seca),
+                        'FECHAS_LLUVIA': ','.join(fechas_lluvia),
+                        'FECHAS_ADQUISICION': ','.join(
+                            sorted(set(fechas_seca) | set(fechas_lluvia))),
+                        'N_ESCENAS_SECA': str(len(secas)),
+                        'N_ESCENAS_LLUVIA': str(len(lluvias)),
+                        'MIN_OBS_POR_PIXEL': str(min_obs),
+                        'AUTOR': f'{AUTOR} <{AUTOR_EMAIL}>',
+                    },
+                    feedback=feedback)
                 salida.FlushCache()
                 salida = None
 
@@ -4855,15 +5013,21 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
                             b_n = ds_n.GetRasterBand(idx_b)
                             b_n.WriteArray(arr_n.astype(np.int16))
                             b_n.SetDescription(etiqueta_n)
-                        ds_n.SetMetadata({
-                            'MESES_SECA': ','.join(
-                                str(m) for m in sorted(meses_seca)),
-                            'MESES_LLUVIA': ','.join(
-                                str(m) for m in sorted(meses_lluvia)),
-                            'MIN_OBS_POR_PIXEL': str(min_obs),
-                            'BANDA_1': 'observaciones validas en seca',
-                            'BANDA_2': 'observaciones validas en lluvia',
-                        })
+                        self._sellar(
+                            ruta_nobs,
+                            f'Observaciones validas por pixel ({sufijo})',
+                            ds=ds_n,
+                            extra={
+                                'INDICE': sufijo,
+                                'MESES_SECA': ','.join(
+                                    str(m) for m in sorted(meses_seca)),
+                                'MESES_LLUVIA': ','.join(
+                                    str(m) for m in sorted(meses_lluvia)),
+                                'MIN_OBS_POR_PIXEL': str(min_obs),
+                                'BANDA_1': 'observaciones validas en seca',
+                                'BANDA_2': 'observaciones validas en lluvia',
+                            },
+                            feedback=feedback)
                         ds_n.FlushCache()
                         ds_n = None
                         feedback.pushInfo(

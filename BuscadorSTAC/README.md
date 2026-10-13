@@ -1,6 +1,6 @@
 # Buscador STAC: Sentinel, Landsat y Esri Wayback
 
-![version](https://img.shields.io/badge/version-1.9.0-blue)
+![version](https://img.shields.io/badge/version-1.10.0-blue)
 ![QGIS](https://img.shields.io/badge/QGIS-%E2%89%A5%203.28-green)
 ![licencia](https://img.shields.io/badge/licencia-GPL%20v2%2B-orange)
 
@@ -717,6 +717,7 @@ Copyright © 2026 Jorge Fallas <jfallas56@gmail.com>
 
 | Versión | Fecha | Cambios |
 |---|---|---|
+| 1.10.0 | 2026-10-13 | **Procedencia dentro de cada archivo**: sensor, colección, catálogo, nivel, corrección, máscara, origen de la escala y fechas de adquisición en los metadatos de cada ráster, más una sección «Archivos escritos» en el informe. El informe se queda en la carpeta; un GeoTIFF viaja solo. Corrige el `GENERADO_POR` de la amplitud, que llevaba el nombre del complemento de antes del cambio. |
 | 1.9.0 | 2026-10-12 | **dNBR**: severidad de quema entre una fecha anterior y otra posterior al incendio, con las cinco clases de Key y Benson (2006) y el área de cada una. Evaluación inicial o extendida. Los umbrales van en unidades de índice y ×1000, porque confundirlas da un mapa donde todo sale «sin quemar». Con sus condiciones de uso listadas enteras, incluida la de que fuera del perímetro el dNBR tampoco es cero. |
 | 1.8.1 | 2026-10-12 | Seis correcciones de redacción en el texto nuevo del informe —la primera reportada por el usuario— y NDRE/CIre pasan de «Clorofila» a **indicador relativo de clorofila**, con el aviso de que no son una medida de contenido. |
 | 1.8.0 | 2026-10-12 | Guía de **cómo se lee cada índice** en el informe: qué mide, qué es alto, qué es bajo y de qué se confunde, para los once. Direcciones y no tramos, porque la dirección está establecida y los límites de clase no. Y el informe habla **solo de los índices pedidos**: 1.7.0 sacaba los tramos de NDVI siempre, incluso a quien solo había calculado NDMI. |

@@ -25,7 +25,7 @@ cambió ni una línea de ellos.
 
 Autor    : Jorge Fallas (jfallas56@gmail.com)
 Licencia : GPL v2 o posterior
-Versión  : 1.9.0
+Versión  : 1.10.0
 """
 
 import datetime
@@ -1052,6 +1052,84 @@ def _filas_guia(sufijos):
 
 
 # ==========================================================================
+# Procedencia que viaja DENTRO del archivo
+# ==========================================================================
+# El informe HTML ya cuenta lo que hizo la ejecucion, pero se queda en la
+# carpeta. Un GeoTIFF se manda por correo, se mueve, o se encuentra en un
+# disco dos anos despues: entonces el informe no viaja o no se ve, y lo
+# unico que queda es lo que el archivo lleve dentro.
+#
+# Hasta ahora los rasteres de indice por escena llevaban SOLO el nombre
+# del indice en la descripcion de banda. Ni sensor, ni coleccion, ni fecha
+# completa --el nombre del archivo trae ano y mes--, ni que mascara se
+# aplico, ni de donde salio la escala. El dNBR era peor: ni las dos fechas
+# que lo forman, de modo que un mapa de severidad no se podia comprobar.
+#
+# Las claves van en MAYUSCULAS porque es la convencion de los metadatos de
+# GDAL, y los valores son cadenas porque SetMetadata no acepta otra cosa.
+# Se leen con gdalinfo, en QGIS con Propiedades de la capa -> Informacion,
+# y desde una expresion de QGIS.
+
+# Nivel de procesamiento y correccion atmosferica por coleccion. No se
+# nombra el procesador concreto de Landsat --LaSRC para OLI, LEDAPS para
+# TM/ETM+-- porque la coleccion sola no dice cual se aplico a la escena.
+_NIVEL_COLECCION = {
+    'sentinel-2-l2a': ('L2A — reflectancia de superficie', 'Sen2Cor (ESA)'),
+    'sentinel-2-c1-l2a': ('L2A — reflectancia de superficie',
+                          'Sen2Cor (ESA)'),
+    'landsat-c2-l2': ('Collection 2 Level-2 — reflectancia de superficie',
+                      'USGS Collection 2 Level-2'),
+}
+
+CLAVES_PROCEDENCIA = (
+    'PRODUCTO', 'SENSOR', 'COLECCION', 'CATALOGO', 'CATALOGO_URL',
+    'NIVEL_PROCESAMIENTO', 'CORRECCION_ATMOSFERICA', 'MASCARA_CALIDAD',
+    'RADIOMETRIA', 'GENERADO_POR', 'GENERADO',
+)
+
+
+def metadatos_producto(producto, sensor=None, coleccion=None, catalogo=None,
+                       catalogo_url=None, mascara=None, radiometria=None,
+                       generado_por=None, generado=None, extra=None):
+    """Procedencia de un raster, lista para SetMetadata.
+
+    `catalogo` es la etiqueta completa del catalogo elegido, que es donde
+    vive el estado de armonizacion: «linea base mezclada», «linea base
+    uniforme» o «sin armonizar». Se guarda tal cual en vez de reducirla a
+    una bandera, porque la frase dice mas que un si/no y no hay que
+    mantener una tabla aparte que se desincronice de CATALOGOS.
+
+    `extra` son las claves propias del producto --fechas del dNBR, meses
+    de la amplitud-- y van despues de las comunes. Los valores None o
+    vacios se omiten: una clave con «?» dentro de un archivo es peor que
+    la ausencia de la clave, porque parece un dato.
+    """
+    nivel, correccion = _NIVEL_COLECCION.get(
+        str(coleccion or ''), (None, None))
+    datos = {
+        'PRODUCTO': producto,
+        'SENSOR': sensor,
+        'COLECCION': coleccion,
+        'CATALOGO': catalogo,
+        'CATALOGO_URL': catalogo_url,
+        'NIVEL_PROCESAMIENTO': nivel,
+        'CORRECCION_ATMOSFERICA': correccion,
+        'MASCARA_CALIDAD': mascara,
+        'RADIOMETRIA': radiometria,
+        'GENERADO_POR': generado_por,
+        'GENERADO': generado,
+    }
+    for k, v in (extra or {}).items():
+        datos[str(k).upper()] = v
+    return {k: str(v) for k, v in datos.items()
+            if v is not None and str(v).strip() != ''}
+
+
+COLS_INVENTARIO = ('Archivo', 'Producto', 'Fecha(s) de adquisición',
+                   'Sensor', 'Máscara', 'Radiometría')
+
+
+# ==========================================================================
 # dNBR: severidad de quema entre una fecha anterior y otra posterior
 # ==========================================================================
 # Los umbrales son los de Key y Benson (2006), «Landscape Assessment» en el
@@ -1276,6 +1354,15 @@ def informe_indices_html(datos):
             'una tabla ajena. Los percentiles 2 y 98 son los mismos que '
             'usa el realce de la simbología, así que explican el color '
             'que ve en el lienzo.'),
+        _tabla_cols_html(
+            'Archivos escritos', COLS_INVENTARIO,
+            datos.get('inventario') or [],
+            'Una fila por ráster que esta ejecución escribió. Los mismos '
+            'datos van DENTRO de cada archivo, en sus metadatos: este '
+            'informe se queda en la carpeta, pero un GeoTIFF se manda por '
+            'correo o se encuentra en un disco dos años después, y entonces '
+            'lo único que queda es lo que lleve dentro. Se leen con '
+            'gdalinfo, o en QGIS con Propiedades de la capa → Información.'),
         _tabla_html(
             'dNBR — escenas usadas', datos.get('dnbr_escenas') or [],
             'La resta es ANTES menos DESPUÉS, de modo que una quema sale '

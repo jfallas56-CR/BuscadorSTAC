@@ -1935,3 +1935,93 @@ def test_el_informe_de_dnbr_avisa_del_perimetro():
         'distribucion': [], 'dnbr_clases': core.clasificar_dnbr(
             np.array([0.5]), 400.0)})
     assert 'perímetro del incendio' in con
+
+
+# --------------------------------------------------------------------------
+# Procedencia dentro del archivo
+# --------------------------------------------------------------------------
+def test_metadatos_producto_deriva_nivel_y_correccion():
+    """De la coleccion, no de un parametro aparte que se desincronice."""
+    m = core.metadatos_producto('Índice NDVI', coleccion='sentinel-2-l2a')
+    assert 'L2A' in m['NIVEL_PROCESAMIENTO']
+    assert 'Sen2Cor' in m['CORRECCION_ATMOSFERICA']
+
+    m = core.metadatos_producto('Índice NDVI', coleccion='landsat-c2-l2')
+    assert 'Collection 2 Level-2' in m['NIVEL_PROCESAMIENTO']
+    assert 'USGS' in m['CORRECCION_ATMOSFERICA']
+
+    # Una coleccion desconocida no inventa nivel: omite las dos claves.
+    m = core.metadatos_producto('X', coleccion='lo-que-sea')
+    assert 'NIVEL_PROCESAMIENTO' not in m
+    assert 'CORRECCION_ATMOSFERICA' not in m
+
+
+def test_metadatos_producto_omite_lo_que_no_sabe():
+    """Una clave con «?» dentro de un archivo es peor que su ausencia:
+    parece un dato. Si no se sabe, no se escribe."""
+    m = core.metadatos_producto('Índice NDVI', sensor=None, catalogo='',
+                                mascara='   ', radiometria=None)
+    assert m == {'PRODUCTO': 'Índice NDVI'}
+    assert 'SENSOR' not in m and 'CATALOGO' not in m
+    assert 'MASCARA_CALIDAD' not in m
+
+
+def test_metadatos_producto_todo_son_cadenas():
+    """SetMetadata de GDAL no acepta otra cosa."""
+    m = core.metadatos_producto(
+        'dNBR', coleccion='landsat-c2-l2',
+        extra={'DIAS': 10, 'UMBRAL': 0.27, 'LISTA': ['a', 'b']})
+    assert all(isinstance(k, str) for k in m)
+    assert all(isinstance(v, str) for v in m.values()), m
+    assert m['DIAS'] == '10' and m['UMBRAL'] == '0.27'
+
+
+def test_metadatos_producto_pone_los_extras_en_mayusculas():
+    m = core.metadatos_producto('X', extra={'fecha_pre': '2026-01-09'})
+    assert m['FECHA_PRE'] == '2026-01-09'
+    assert 'fecha_pre' not in m
+
+
+def test_el_catalogo_guarda_el_estado_de_armonizacion_en_palabras():
+    """La etiqueta del catalogo ya dice «linea base mezclada», «linea
+    base uniforme» o «sin armonizar». Se guarda tal cual en vez de
+    reducirla a una bandera y mantener una tabla aparte que se
+    desincronice de CATALOGOS."""
+    etq = 'sentinel-2-c1-l2a · Earth Search Colección 1 — línea base uniforme'
+    m = core.metadatos_producto('Índice NDVI', catalogo=etq)
+    assert m['CATALOGO'] == etq
+    assert 'línea base uniforme' in m['CATALOGO']
+
+
+def test_el_informe_saca_el_inventario_solo_si_hay_archivos():
+    base = {'titulo': 'T', 'generado': 'G', 'generado_por': 'P',
+            'distribucion': []}
+    assert 'Archivos escritos' not in core.informe_indices_html(base)
+    con = core.informe_indices_html(dict(base, inventario=[[
+        'NDVI_2026-01.tif', 'Índice espectral NDVI', '2026-01-09',
+        'Sentinel-2', 'SCL', 'raster:bands']]))
+    assert 'Archivos escritos' in con
+    assert 'NDVI_2026-01.tif' in con
+    # Y dice POR QUE los mismos datos van tambien dentro del archivo.
+    assert 'gdalinfo' in con
+
+
+def test_la_fila_del_inventario_cuadra_con_sus_cabeceras():
+    """Mismo defecto que ya aparecio en la tabla de distribucion: una
+    fila corta no da error, solo descuadra la tabla."""
+    fila = ['NDVI_2026-01.tif', 'Índice espectral NDVI', '2026-01-09',
+            'Sentinel-2', 'SCL', 'raster:bands']
+    assert len(fila) == len(core.COLS_INVENTARIO)
+
+
+def test_las_claves_comunes_de_procedencia_estan_declaradas():
+    """CLAVES_PROCEDENCIA documenta el contrato del archivo. Si alguien
+    anade una clave comun a metadatos_producto y no la declara, la
+    documentacion del formato se queda atras."""
+    m = core.metadatos_producto(
+        'X', sensor='Sentinel-2', coleccion='sentinel-2-l2a',
+        catalogo='etq', catalogo_url='https://ej', mascara='SCL',
+        radiometria='raster:bands', generado_por='BuscadorSTAC',
+        generado='2026-10-13T00:00:00Z')
+    assert set(m) == set(core.CLAVES_PROCEDENCIA), (
+        set(m) ^ set(core.CLAVES_PROCEDENCIA))

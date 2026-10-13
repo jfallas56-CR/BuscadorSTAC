@@ -35,7 +35,7 @@ about=[ENGLISH SUMMARY]
     El cuarto exporta la capa elegida a KMZ y la abre en Google Earth. Un raster se RENDERIZA antes con la simbologia que se ve en QGIS, porque KML no guarda valores sino imagenes pegadas al terreno: volcar un GeoTIFF de NDVI sin renderizar daria una imagen gris ilegible. Lo vectorial va por LIBKML y conserva los atributos; indicando un campo de fecha, cada entidad sale con su TimeStamp y Google Earth muestra el control deslizante de tiempo, util para recorrer una serie de huellas en vez de verlas encimadas. El KMZ lo leen todas las versiones de Google Earth, pero abrirlo solo se puede automatizar en la de escritorio: Earth Web y las apps moviles no permiten que otra aplicacion les entregue un archivo, de modo que para esas el algoritmo deja el archivo y dice como importarlo.
     Numeros: punto para los decimales y espacio para los millares, nunca coma, de modo que las cifras del registro se pegan sin retoques en un campo de extension o de SRC de QGIS, en la consola de Python o en una hoja de calculo. El parametro «Limites fijos min,max» parte su entrada por la coma, asi que ahi una coma decimal se leeria como otro rango sin dar error.
     Datos: Copernicus Sentinel-1 y Sentinel-2 (ESA) y Landsat Collection 2 (USGS/NASA), de acceso abierto; productos RTC generados por ASF DAAC HyP3 con software GAMMA, que requiere una cuenta gratuita de Earthdata Login. Las imagenes de Esri NO son dato abierto: se rigen por el Esri Master License Agreement.
-version=1.9.0
+version=1.10.0
 author=Jorge Fallas
 email=jfallas56@gmail.com
 tracker=https://github.com/jfallas56-CR/BuscadorSTAC/issues
@@ -48,7 +48,59 @@ hasProcessingProvider=yes
 experimental=False
 deprecated=False
 server=False
-changelog=1.9.0 (2026-10-12) dNBR: severidad de quema antes/despues.
+changelog=1.10.0 (2026-10-13) Procedencia dentro de cada archivo.
+    Todo raster que el complemento escribe lleva ahora su procedencia en
+    los metadatos: producto, sensor, coleccion, etiqueta y URL del
+    catalogo, nivel de procesamiento, correccion atmosferica, mascara de
+    calidad aplicada, de donde salio la escala y el desplazamiento,
+    version del complemento y marca de tiempo. Mas lo propio de cada
+    producto: fecha de adquisicion y escena en los indices por escena; las
+    dos fechas, la del incendio, la evaluacion y los umbrales en el dNBR;
+    los meses y las fechas por estacion en la amplitud.
+    Se leen con gdalinfo, en QGIS con Propiedades de la capa ->
+    Informacion, y desde una expresion.
+    POR QUE, y no es lo mismo que un informe: el informe HTML se queda en
+    la carpeta, pero un GeoTIFF se manda por correo, se mueve o se
+    encuentra en un disco dos anos despues. Entonces el informe no viaja o
+    no se ve, y lo unico que queda es lo que el archivo lleve dentro.
+    Hasta 1.9.0 los indices por escena llevaban SOLO el nombre del indice
+    en la descripcion de banda --ni sensor, ni coleccion, ni la fecha
+    completa, porque el nombre del archivo trae ano y mes--. El dNBR era
+    peor: ni las dos fechas que lo forman, de modo que un mapa de
+    severidad no se podia comprobar. Ese hueco lo abrio 1.9.0.
+    El informe gana una seccion «Archivos escritos»: una fila por raster,
+    con los mismos datos, para ver la ejecucion de un golpe y poder
+    comparar dos. No es un informe nuevo: la carpeta ya tenia index.html y
+    indices_distribucion.html, y un tercero seria el que nadie abre.
+    CORREGIDO de paso: la amplitud escribia su propio diccionario de
+    metadatos con GENERADO_POR = «buscar_sentinel2_cr», el nombre del
+    complemento ANTES de renombrarlo. Todas las amplitudes escritas hasta
+    hoy lo llevan. Ahora pasa por la funcion comun, que ademas le anade
+    sensor, catalogo, mascara y radiometria.
+    El estado de armonizacion se guarda como la ETIQUETA del catalogo, que
+    ya lo dice en palabras --«linea base mezclada», «linea base uniforme»,
+    «sin armonizar»--, en vez de reducirlo a una bandera que obligaria a
+    mantener una tabla aparte de CATALOGOS.
+    Y la radiometria dice si TODAS las bandas leyeron raster:bands o si
+    alguna cayo al respaldo. Es el dato que decide si el valor del indice
+    depende del catalogo o de una constante supuesta.
+    Las claves con valor desconocido NO se escriben: una clave con «?»
+    dentro de un archivo es peor que su ausencia, porque parece un dato.
+    Dos huecos propios, encontrados al conectar esto: la llamada que
+    escribe el informe estaba DENTRO de «if indices:», de modo que una
+    ejecucion de solo descarga de bandas recogia su inventario y no lo
+    escribia nunca; y el titulo del informe decia «Indices espectrales»
+    aunque no hubiera indices. Los dos corregidos.
+    preflight gana comp_rasteres_sellados, que exige que todo metodo que
+    escriba un raster de producto pase por el sellado. Los cuatro que
+    escriben algo intermedio --recortes en tempFolder y vistas previas de
+    la hoja de contactos-- estan DECLARADOS con su motivo, y no como una
+    heuristica sobre el texto: buscar «tmp» en la llamada dejaba pasar
+    tres de ellos, y habria dejado pasar tambien al siguiente producto sin
+    sellar. La comprobacion encontro cuatro sitios que a mano se habian
+    pasado por alto.
+    
+    1.9.0 (2026-10-12) dNBR: severidad de quema antes/despues.
     Marcando «Calcular dNBR» y dando la fecha del incendio, el algoritmo
     resta el NBR de una escena posterior al de una anterior y escribe la
     diferencia como capa propia. La resta es ANTES menos DESPUES, de modo

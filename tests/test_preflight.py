@@ -945,3 +945,51 @@ def test_detecta_una_fila_de_guia_a_medias(copia):
     _escribir(copia, 'core.py', t[:i] + "        ''" + t[fin:])
     _, datos = _correr(copia)
     assert _dice(datos, 'incompleta'), _bloqueantes(datos)
+
+
+# =====================================================================
+# Procedencia dentro de los rasteres
+# =====================================================================
+def test_detecta_un_producto_que_se_escribe_sin_procedencia(copia):
+    """El defecto que la comprobacion cierra: anadir un producto nuevo y
+    olvidar su procedencia. Un GeoTIFF se manda por correo y se
+    encuentra en un disco dos anos despues; el informe se queda en la
+    carpeta.
+    """
+    t = _leer(copia, 'buscar_sentinel2_algoritmo.py')
+    t += ('\n\n    def _producto_nuevo(self, carpeta, feedback):\n'
+          '        """Escribe un raster y no lo sella."""\n'
+          '        ds = gdal.GetDriverByName("GTiff").Create(\n'
+          '            carpeta + "/nuevo.tif", 10, 10, 1)\n'
+          '        ds = None\n')
+    _escribir(copia, 'buscar_sentinel2_algoritmo.py', t)
+    _, datos = _correr(copia)
+    assert _dice(datos, '_sellar'), _bloqueantes(datos)
+
+
+def test_un_intermedio_declarado_no_dispara(copia):
+    """Control negativo. Los cuatro metodos que escriben algo
+    intermedio --recortes en tempFolder y vistas previas de la hoja de
+    contactos-- estan declarados con su motivo, y no se les exige
+    procedencia.
+
+    La lista es declarada y no una heuristica sobre el texto a
+    proposito: buscar «tmp» en la llamada dejaba pasar tres de ellos, y
+    habria dejado pasar tambien al siguiente producto sin sellar.
+    """
+    assert "'_mascara_nubes'" in open(
+        os.path.join(copia, 'tools', 'preflight.py'),
+        encoding='utf-8').read()
+    _, datos = _correr(copia)
+    assert not _dice(datos, '_sellar'), _bloqueantes(datos)
+
+
+def test_detecta_que_falte_una_clave_comun_de_procedencia(copia):
+    """CLAVES_PROCEDENCIA es el contrato del formato del archivo."""
+    t = _leer(copia, 'core.py')
+    ancla = "    'RADIOMETRIA', 'GENERADO_POR', 'GENERADO',\n"
+    assert ancla in t, 'cambio CLAVES_PROCEDENCIA'
+    _escribir(copia, 'core.py',
+              t.replace(ancla, "    'GENERADO_POR', 'GENERADO',\n", 1))
+    _, datos = _correr(copia)
+    assert _dice(datos, 'claves comunes de procedencia'), _bloqueantes(datos)
