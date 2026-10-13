@@ -35,7 +35,7 @@ about=[ENGLISH SUMMARY]
     El cuarto exporta la capa elegida a KMZ y la abre en Google Earth. Un raster se RENDERIZA antes con la simbologia que se ve en QGIS, porque KML no guarda valores sino imagenes pegadas al terreno: volcar un GeoTIFF de NDVI sin renderizar daria una imagen gris ilegible. Lo vectorial va por LIBKML y conserva los atributos; indicando un campo de fecha, cada entidad sale con su TimeStamp y Google Earth muestra el control deslizante de tiempo, util para recorrer una serie de huellas en vez de verlas encimadas. El KMZ lo leen todas las versiones de Google Earth, pero abrirlo solo se puede automatizar en la de escritorio: Earth Web y las apps moviles no permiten que otra aplicacion les entregue un archivo, de modo que para esas el algoritmo deja el archivo y dice como importarlo.
     Numeros: punto para los decimales y espacio para los millares, nunca coma, de modo que las cifras del registro se pegan sin retoques en un campo de extension o de SRC de QGIS, en la consola de Python o en una hoja de calculo. El parametro «Limites fijos min,max» parte su entrada por la coma, asi que ahi una coma decimal se leeria como otro rango sin dar error.
     Datos: Copernicus Sentinel-1 y Sentinel-2 (ESA) y Landsat Collection 2 (USGS/NASA), de acceso abierto; productos RTC generados por ASF DAAC HyP3 con software GAMMA, que requiere una cuenta gratuita de Earthdata Login. Las imagenes de Esri NO son dato abierto: se rigen por el Esri Master License Agreement.
-version=1.8.0
+version=1.8.1
 author=Jorge Fallas
 email=jfallas56@gmail.com
 tracker=https://github.com/jfallas56-CR/BuscadorSTAC/issues
@@ -48,7 +48,47 @@ hasProcessingProvider=yes
 experimental=False
 deprecated=False
 server=False
-changelog=1.8.0 (2026-10-12) Como se lee cada indice, y solo los pedidos.
+changelog=1.8.1 (2026-10-12) Redaccion del informe, y la clorofila en su sitio.
+    Seis correcciones de redaccion en el texto nuevo de 1.7.0 y 1.8.0. La
+    primera la reporto el usuario y las demas salieron de releer el texto
+    plano del informe, que es como lo lee quien lo abre:
+    - «Para quien no trabaja en teledeteccion a diario: que mide cada indice
+      y hacia donde.» no era una oracion: sin verbo, y «hacia donde» colgaba
+      sin nada que lo rigiera. Ahora: «Esta tabla dice que mide cada indice
+      y en que direccion responde, para quien no trabaja en teledeteccion a
+      diario.»
+    - «la direccion esta establecida y los limites de clase no» -> «...y los
+      limites de clase no lo estan».
+    - «La columna «Cuidado» es la que importa -- cada indice tiene una
+      confusion caracteristica, y es la que convierte un mapa convincente en
+      una conclusion equivocada»: «es la que» se pegaba a «la columna»
+      cuando queria decir «la confusion». Ahora lo nombra.
+    - «el NDVI confunde cuanta cubierta hay con en que estado esta»: choque
+      de preposiciones. Ahora «confunde la cantidad de cubierta con su
+      estado».
+    - «use la tabla de arriba, que es de su escena, y verdad de campo»: el
+      ultimo termino colgaba. Ahora «guiese por la tabla de arriba --que si
+      es de su escena-- y por verdad de campo».
+    - «no se lee como un cinco decimas» en la ayuda de «Limites fijos»:
+      concordancia. Ahora «el parametro no lee cinco decimas».
+    Y dos calcos: «coma en ningun papel» pasa a «la coma no se usa ni como
+    decimal ni como separador de millar», que ademas dice cual es la regla
+    en vez de aludirla; y «Coeficientes propios de cada sensor: no
+    comparable entre sensores» gana su verbo.
+    CLOROFILA: NDRE y CIre decian «mide: Clorofila», a secas. El README ya
+    advertia que son indices espectrales y no variables biofisicas, pero el
+    informe --que es donde mira quien no es especialista-- se saltaba la
+    advertencia. Ahora dicen «indicador relativo de clorofila» y su columna
+    «Cuidado» dice que NO son una medida de contenido y que valen para
+    comparar dentro de la misma escena. La razon es concreta: un indice de
+    banda estrecha hecho a proposito para estimar clorofila foliar, el mejor
+    de doce en una comparacion contra contenido medido, explica alrededor de
+    la mitad de la variacion en el cultivo con el que se calibro (Cui et al.
+    2019, Remote Sensing 11(8) 974). Un cociente de banda ancha aplicado
+    sobre cobertura mixta no entrega una cifra de clorofila.
+    Sin cambios de logica: solo texto.
+    
+    1.8.0 (2026-10-12) Como se lee cada indice, y solo los pedidos.
     El informe gana una guia de interpretacion para los ONCE indices: que
     mide cada uno, que significa un valor alto, que significa uno bajo y
     --la columna que importa-- de que se confunde. Esta escrita para quien

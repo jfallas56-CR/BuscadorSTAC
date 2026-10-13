@@ -27,7 +27,7 @@ No requiere credenciales para Earth Search. Planetary Computer usa un
 token SAS anónimo gratuito que el algoritmo solicita automáticamente.
 
 Autor  : Jorge Fallas (jfallas56@gmail.com)
-Versión: 1.8.0
+Versión: 1.8.1
 
 Historial:
     1.8.0 (2026-10-12): Guia de como se lee cada indice en el informe
@@ -1011,7 +1011,7 @@ def _geom_desde_geojson(gj):
 # --------------------------------------------------------------------------
 class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
 
-    VERSION = 'v1.8.0'
+    VERSION = 'v1.8.1'
 
     # Lógica pura, definida en core.py y reenganchada aquí como
     # staticmethod. Así cada sitio de llamada sigue siendo
@@ -1864,8 +1864,8 @@ class BuscarSentinel2Algorithm(QgsProcessingAlgorithm):
             'Dos números separados por coma, por ejemplo <code>-0.1,0.5</code> '
             'para NDMI o <code>-0.6,0.1</code> para la amplitud.<br>'
             '<b>Aquí la coma separa los dos números: el decimal es el '
-            'punto.</b> Escrito <code>0,5</code> esto no se lee como un cinco '
-            'décimas, sino como el rango «de 0 a 5», y no da error: la capa '
+            'punto.</b> Si escribe <code>0,5</code>, el parámetro no lee '
+            'cinco décimas, sino el rango «de 0 a 5», y no da error: la capa '
             'se clasifica entre 0 y 5, de modo que un índice que va de −1 a 1 '
             'queda entero en la primera clase. Si prefiere no tener que '
             'pensarlo, separe con punto y coma: <code>-0.1;0.5</code>.<br>'

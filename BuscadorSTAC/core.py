@@ -25,7 +25,7 @@ cambió ni una línea de ellos.
 
 Autor    : Jorge Fallas (jfallas56@gmail.com)
 Licencia : GPL v2 o posterior
-Versión  : 1.8.0
+Versión  : 1.8.1
 """
 
 import datetime
@@ -975,17 +975,24 @@ GUIA_INDICES = {
         'descubierto da valores altos que no son el estrés de ninguna '
         'planta.'),
     'NDRE': (
-        'Clorofila, por el borde rojo',
-        'Más clorofila',
+        'Indicador relativo de clorofila, por el borde rojo',
+        'Más clorofila que el resto de la escena',
         'Menos clorofila: senescencia o deficiencia',
+        'NO es una medida de contenido de clorofila, solo un indicador '
+        'para comparar dentro de la misma escena: los índices de banda '
+        'ancha no dan un valor en mg g⁻¹, y los índices de banda estrecha '
+        'hechos a propósito para eso explican alrededor de la mitad de la '
+        'variación incluso en el cultivo con el que se calibraron. '
         'Solo Sentinel-2: Landsat no tiene borde rojo. Responde al ESTADO '
         'de la hoja más que a cuánta cubierta hay, de modo que para '
         'cartografía de cobertura dice menos que el NDMI o el NBR.'),
     'CIre': (
-        'Clorofila, por el borde rojo, como razón',
-        'Más clorofila',
+        'Indicador relativo de clorofila, por el borde rojo, como razón',
+        'Más clorofila que el resto de la escena',
         'Menos clorofila',
-        'Solo Sentinel-2. Sin cota superior. Lleva el borde rojo 1 en el '
+        'NO es una medida de contenido de clorofila: vale para comparar '
+        'dentro de la misma escena, no para dar una cifra. Solo '
+        'Sentinel-2. Sin cota superior. Lleva el borde rojo 1 en el '
         'denominador, así que sobre cubierta escasa amplifica el ruido.'),
     'TCB': (
         'Brillo: suma ponderada de toda la reflectancia',
@@ -1009,7 +1016,8 @@ GUIA_INDICES = {
         'Seco',
         'Responde también a la sombra que una superficie rugosa proyecta '
         'sobre sí misma, que puede leerse como humedad. Coeficientes '
-        'propios de cada sensor: no comparable entre sensores.'),
+        'propios de cada sensor, así que el valor no es comparable entre '
+        'sensores distintos.'),
 }
 
 COLS_GUIA = ('Índice', 'Qué mide', 'Valor alto', 'Valor bajo', 'Cuidado')
@@ -1096,36 +1104,39 @@ def informe_indices_html(datos):
     partes = [
         _tabla_cols_html(
             'Distribución de cada índice', COLS_DISTRIBUCION, filas,
-            'Sobre los píxeles válidos de SU recorte, descontados nube, '
-            'sombra de nube y sin dato. Es lo que contesta «¿0.45 es alto '
-            'o bajo aquí?»: alto o bajo respecto a esta escena, que es la '
-            'única comparación que no depende de una tabla ajena. Los '
-            'percentiles 2 y 98 son los mismos que usa el realce de la '
-            'simbología, así que explican el color que ve en el lienzo.'),
+            'Calculado sobre los píxeles válidos de SU recorte, '
+            'descontados nube, sombra de nube y sin dato. Aquí está la '
+            'respuesta a «¿0.45 es alto o bajo?»: alto o bajo respecto a '
+            'esta escena, que es la única comparación que no depende de '
+            'una tabla ajena. Los percentiles 2 y 98 son los mismos que '
+            'usa el realce de la simbología, así que explican el color '
+            'que ve en el lienzo.'),
         _tabla_cols_html(
             'Cómo se lee cada índice', COLS_GUIA, _filas_guia(presentes),
-            'Para quien no trabaja en teledetección a diario: qué mide cada '
-            'índice y hacia dónde. Se dan direcciones y no tramos porque la '
-            'dirección está establecida y los límites de clase no: dónde '
-            'empieza una clase lo decide su área de estudio. La columna '
-            '«Cuidado» es la que importa — cada índice tiene una confusión '
-            'característica, y es la que convierte un mapa convincente en '
-            'una conclusión equivocada.'),
+            'Esta tabla dice qué mide cada índice y en qué dirección '
+            'responde, para quien no trabaja en teledetección a diario. '
+            'Da direcciones y no tramos numéricos porque la dirección de '
+            'la respuesta sí está establecida y los límites de clase no lo '
+            'están: dónde empieza una clase lo decide su área de estudio. '
+            'Fíjese sobre todo en la columna «Cuidado»: cada índice tiene '
+            'una confusión característica, y es esa confusión la que '
+            'convierte un mapa convincente en una conclusión equivocada.'),
         _tabla_cols_html(
             'Rangos orientativos de NDVI',
             ('NDVI', 'Cubierta típica', 'Pero también puede ser'),
             _filas_rangos_ndvi() if 'NDVI' in presentes else [],
-            'ORIENTATIVOS, y nada más: no son una clasificación publicada '
-            'ni se derivaron de su área. La tercera columna es la razón: '
-            'el NDVI confunde cuánta cubierta hay con en qué estado está, '
-            'de modo que un mismo valor admite dos lecturas. Los límites '
-            'se mueven además con el sensor (una banda roja de Landsat no '
-            'es la de Sentinel-2), con la corrección atmosférica, con la '
-            'fenología y con la geometría de iluminación. Para decidir '
-            'clases use la tabla de arriba, que es de su escena, y verdad '
-            'de campo. Solo se dan para NDVI: para los demás índices no '
-            'circulan rangos comparables e inventarlos sería peor que no '
-            'tenerlos.'),
+            'Estos tramos son ORIENTATIVOS y nada más: no son una '
+            'clasificación publicada ni se derivaron de su área. La '
+            'tercera columna explica por qué no pueden serlo: el NDVI '
+            'confunde la cantidad de cubierta con su estado, de modo que '
+            'un mismo valor admite dos lecturas. Los límites se mueven '
+            'además con el sensor (la banda roja de Landsat no es la de '
+            'Sentinel-2), con la corrección atmosférica, con la fenología '
+            'y con la geometría de iluminación. Para decidir clases, '
+            'guíese por la tabla de arriba —que sí es de su escena— y por '
+            'verdad de campo. Solo se dan para NDVI: para los demás '
+            'índices no circulan rangos comparables, e inventarlos sería '
+            'peor que no tenerlos.'),
         _tabla_html('Parámetros de la ejecución', datos.get('parametros')
                     or []),
         _tabla_html('Entorno', datos.get('entorno') or []),
@@ -1539,7 +1550,8 @@ ESPACIO_FINO = '\u202f'
 
 def miles(valor, decimales=0):
     """Numero en la convencion UNICA del complemento: espacio fino para
-    el millar, PUNTO para el decimal. Nunca una coma, en ningun papel.
+    el millar, PUNTO para el decimal. La coma no se usa ni como decimal
+    ni como separador de millar.
 
     Punto decimal, aunque la convencion del espanol sea la coma, porque
     estos numeros se copian: a un campo de extension o de SRC de QGIS, a
@@ -1584,7 +1596,8 @@ NOTA_NUMEROS = (
     'Punto (.) para los decimales y espacio para los millares: '
     f'«1{ESPACIO_FINO}234.56». Así los valores del registro se pegan sin '
     'retoques en un campo de extensión o de SRC de QGIS, en la consola de '
-    'Python o en una hoja de cálculo. No se usa la coma en ningún papel, '
+    'Python o en una hoja de cálculo. La coma no se usa ni como decimal '
+    'ni como separador de millar, '
     'porque «10,000» leído con la convención del español es diez.'
 )
 

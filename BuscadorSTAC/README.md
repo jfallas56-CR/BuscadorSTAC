@@ -1,6 +1,6 @@
 # Buscador STAC: Sentinel, Landsat y Esri Wayback
 
-![version](https://img.shields.io/badge/version-1.8.0-blue)
+![version](https://img.shields.io/badge/version-1.8.1-blue)
 ![QGIS](https://img.shields.io/badge/QGIS-%E2%89%A5%203.28-green)
 ![licencia](https://img.shields.io/badge/licencia-GPL%20v2%2B-orange)
 
@@ -622,7 +622,8 @@ implicadas. El día de la primera no queda en el nombre: está en el campo
 ## Números
 
 **Punto (.) para los decimales y espacio para los millares: `1 234.56`.** Nunca
-una coma, en ningún papel. Es la convención en todo el complemento: rótulos,
+una coma, ni como decimal ni como separador de millar. Es la convención en
+todo el complemento: rótulos,
 ayudas, mensajes del registro y nombres de archivo.
 
 El punto, y no la coma del español, porque estas cifras **se copian**: a la
@@ -673,6 +674,7 @@ Copyright © 2026 Jorge Fallas <jfallas56@gmail.com>
 
 | Versión | Fecha | Cambios |
 |---|---|---|
+| 1.8.1 | 2026-10-12 | Seis correcciones de redacción en el texto nuevo del informe —la primera reportada por el usuario— y NDRE/CIre pasan de «Clorofila» a **indicador relativo de clorofila**, con el aviso de que no son una medida de contenido. |
 | 1.8.0 | 2026-10-12 | Guía de **cómo se lee cada índice** en el informe: qué mide, qué es alto, qué es bajo y de qué se confunde, para los once. Direcciones y no tramos, porque la dirección está establecida y los límites de clase no. Y el informe habla **solo de los índices pedidos**: 1.7.0 sacaba los tramos de NDVI siempre, incluso a quien solo había calculado NDMI. |
 | 1.7.0 | 2026-10-12 | **Informe de distribución** (`indices_distribucion.html`): percentiles de cada índice y escena sobre los píxeles válidos del recorte, para saber si un valor es alto o bajo **ahí** en vez de consultarlo en una tabla ajena. Con rangos orientativos de NDVI por cubierta, pocos y anchos, con la lectura alternativa de cada tramo en su propia columna y la zona de saturación dicha donde ocurre. |
 | 1.6.1 | 2026-10-12 | Se retira de la ayuda de Esri Wayback la cifra «medido sobre un lote de Guanacaste, 5 de 196»: de esa medición no queda rastro, y «medido» afirma un experimento. Se conserva el mecanismo —sobre un lote pequeño quedan unas pocas versiones y no doscientas— y la ayuda remite al modo «Listar», que da el número sobre el área del usuario. |
